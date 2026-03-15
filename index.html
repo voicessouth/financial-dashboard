@@ -17,8 +17,23 @@
     <!-- This is where the React Dashboard will load -->
     <div id="root"></div>
 
+    <!-- Error Handling Script: Shows a message if the dashboard fails to load -->
+    <script>
+      window.onerror = function(msg, url, line) {
+        const root = document.getElementById('root');
+        root.innerHTML = `
+          <div style="padding: 20px; font-family: sans-serif; text-align: center;">
+            <h2 style="color: #e11d48;">Dashboard Load Error</h2>
+            <p>The app couldn't find your code file. Please ensure <b>src/App.jsx</b> exists on GitHub.</p>
+            <code style="background: #f1f5f9; padding: 4px; border-radius: 4px;">${msg}</code>
+          </div>
+        `;
+        return false;
+      };
+    </script>
+
     <!-- This script tells the browser to run your dashboard code -->
-    <!-- Note: This expects your code to be in src/App.jsx -->
+    <!-- CRITICAL: Your dashboard code MUST be in a folder named 'src' and named 'App.jsx' -->
     <script type="module" src="/src/App.jsx"></script>
   </body>
 </html>

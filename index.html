@@ -22,10 +22,15 @@
       window.onerror = function(msg, url, line) {
         const root = document.getElementById('root');
         root.innerHTML = `
-          <div style="padding: 20px; font-family: sans-serif; text-align: center;">
-            <h2 style="color: #e11d48;">Dashboard Load Error</h2>
-            <p>The app couldn't find your code file. Please ensure <b>src/App.jsx</b> exists on GitHub.</p>
-            <code style="background: #f1f5f9; padding: 4px; border-radius: 4px;">${msg}</code>
+          <div style="padding: 40px 20px; font-family: sans-serif; text-align: center; max-width: 500px; margin: auto;">
+            <div style="background: white; padding: 30px; border-radius: 20px; border: 1px solid #e2e8f0; shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);">
+              <h2 style="color: #e11d48; margin-top: 0;">Dashboard Load Error</h2>
+              <p style="color: #64748b; font-size: 14px;">The app couldn't find your code file. Please ensure <b>src/App.jsx</b> exists on GitHub.</p>
+              <div style="background: #f1f5f9; padding: 10px; border-radius: 8px; font-size: 12px; color: #475569; word-break: break-all;">
+                <code>${msg}</code>
+              </div>
+              <button onclick="window.location.reload()" style="margin-top: 20px; background: #4f46e5; color: white; border: none; padding: 10px 20px; border-radius: 10px; cursor: pointer; font-weight: bold;">Retry Loading</button>
+            </div>
           </div>
         `;
         return false;
@@ -33,7 +38,7 @@
     </script>
 
     <!-- This script tells the browser to run your dashboard code -->
-    <!-- CRITICAL: Your dashboard code MUST be in a folder named 'src' and named 'App.jsx' -->
+    <!-- It searches for App.jsx inside the src folder -->
     <script type="module" src="/src/App.jsx"></script>
   </body>
 </html>

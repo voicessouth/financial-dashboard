@@ -1,18 +1,27 @@
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#4f46e5" />
-    <title>Church Financial Dashboard</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-      body { margin: 0; background-color: #f8fafc; }
-    </style>
-  </head>
-  <body>
-    <div id="root"></div>
-    <!-- This must match your file name in the src folder -->
-    <script type="module" src="/src/App.jsx"></script>
-  </body>
-</html>
+{
+"name": "church-financial-dashboard",
+"private": true,
+"version": "0.1.0",
+"type": "module",
+"scripts": {
+"dev": "vite",
+"start": "vite",
+"build": "vite build",
+"preview": "vite preview"
+},
+"dependencies": {
+"react": "^18.2.0",
+"react-dom": "^18.2.0",
+"firebase": "^11.3.1",
+"lucide-react": "^0.331.0",
+"clsx": "^2.1.0",
+"tailwind-merge": "^2.2.1"
+},
+"devDependencies": {
+"@vitejs/plugin-react": "^4.2.1",
+"autoprefixer": "^10.4.17",
+"postcss": "^8.4.35",
+"tailwindcss": "^3.4.1",
+"vite": "^5.1.1"
+}
+}

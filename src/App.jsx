@@ -36,7 +36,9 @@ import {
   WifiOff,
   RefreshCw,
   Database,
-  UserX
+  UserX,
+  UploadCloud,
+  Search
 } from 'lucide-react';
 
 // --- FIREBASE CONFIGURATION ---
@@ -83,6 +85,10 @@ const App = () => {
   const [dbConnected, setDbConnected] = useState(false);
   const [connectionError, setConnectionError] = useState(null);
   const [showOtherInput, setShowOtherInput] = useState(false);
+  
+  // Migration State
+  const [showMigration, setShowMigration] = useState(false);
+  const [localDataFound, setLocalDataFound] = useState(null);
 
   const weeksOfYear = useMemo(() => {
     const weeks = [];
@@ -123,6 +129,12 @@ const App = () => {
         setBankBalance(data.bankBalance || 0);
         setExpenses(data.expenses || []);
         setIsSubmitted(data.status === 'submitted');
+      } else {
+        // Reset local state if document doesn't exist in cloud
+        setRevenueData({});
+        setBankBalance(0);
+        setExpenses([]);
+        setIsSubmitted(false);
       }
     }, (err) => {
       setDbConnected(false);
@@ -134,9 +146,11 @@ const App = () => {
   const totals = useMemo(() => {
     let rev = parseFloat(bankBalance) || 0;
     Object.values(revenueData).forEach(dayData => {
-      Object.values(dayData).forEach(val => {
-        rev += (parseFloat(val) || 0);
-      });
+      if (typeof dayData === 'object') {
+        Object.values(dayData).forEach(val => {
+          rev += (parseFloat(val) || 0);
+        });
+      }
     });
     const exp = expenses.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0);
     return { rev, exp, net: rev - exp };
@@ -153,7 +167,8 @@ const App = () => {
   };
 
   const handleRevenueChange = (cat, val) => {
-    const updatedDayData = { ...revenueData[selectedIncomeDay], [cat]: val };
+    const currentDayData = revenueData[selectedIncomeDay] || {};
+    const updatedDayData = { ...currentDayData, [cat]: val };
     const updatedFullRevenue = { ...revenueData, [selectedIncomeDay]: updatedDayData };
     setRevenueData(updatedFullRevenue);
     updateDoc({ revenue: updatedFullRevenue });
@@ -178,16 +193,54 @@ const App = () => {
     setShowOtherInput(false);
   };
 
+  // --- MIGRATION LOGIC ---
+  const checkForLocalData = () => {
+    // This looks for common keys used in previous versions or generic storage
+    const possibleData = localStorage.getItem('church_reports') || localStorage.getItem('revenueData');
+    if (possibleData) {
+      setLocalDataFound(JSON.parse(possibleData));
+    } else {
+      setLocalDataFound("No previous browser data found.");
+    }
+  };
+
+  const migrateDataToCloud = async () => {
+    if (!localDataFound || typeof localDataFound === 'string') return;
+    
+    // Attempting to push local records to Firestore
+    try {
+        // If localDataFound is an object keyed by dates
+        if (typeof localDataFound === 'object') {
+            for (const [date, data] of Object.entries(localDataFound)) {
+                const docPath = doc(db, 'church_reports', date);
+                await setDoc(docPath, { ...data, migratedAt: new Date().toISOString() }, { merge: true });
+            }
+            alert("Success! Local data has been moved to the cloud.");
+            setShowMigration(false);
+        }
+    } catch (err) {
+        alert("Migration failed: " + err.message);
+    }
+  };
+
   if (loading) return <div className="p-20 text-center font-bold">Connecting...</div>;
 
   return (
     <div className="min-h-screen bg-slate-50 p-4 md:p-8 font-sans">
         <header className="max-w-4xl mx-auto mb-8 flex flex-col md:flex-row justify-between items-center bg-white p-6 rounded-2xl shadow-sm border border-slate-200 gap-4">
-            <div>
+            <div className="flex flex-col gap-1">
               <h1 className="text-2xl font-black text-slate-800 tracking-tight">Financial Dashboard</h1>
-              <div className="flex items-center gap-2 mt-1">
-                <div className={`w-2 h-2 rounded-full ${dbConnected ? 'bg-emerald-500' : 'bg-rose-500 animate-pulse'}`}></div>
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{dbConnected ? 'Connected' : connectionError || 'Offline'}</span>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full ${dbConnected ? 'bg-emerald-500' : 'bg-rose-500 animate-pulse'}`}></div>
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{dbConnected ? 'Connected' : connectionError || 'Offline'}</span>
+                </div>
+                <button 
+                  onClick={() => setShowMigration(!showMigration)}
+                  className="text-[10px] font-black text-indigo-500 uppercase hover:underline flex items-center gap-1"
+                >
+                  <Database size={10}/> Data Tools
+                </button>
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-4">
@@ -216,6 +269,34 @@ const App = () => {
               </div>
             </div>
         </header>
+
+        {showMigration && (
+            <div className="max-w-4xl mx-auto mb-8 bg-indigo-900 text-white p-6 rounded-2xl shadow-xl animate-in fade-in slide-in-from-top-4 duration-300">
+                <h3 className="font-bold flex items-center gap-2 mb-2"><Database size={20}/> Import Local Data</h3>
+                <p className="text-sm text-indigo-200 mb-4">If you previously entered data on this computer before the cloud update, you can scan and move it here.</p>
+                <div className="flex gap-3">
+                    <button 
+                        onClick={checkForLocalData}
+                        className="bg-white text-indigo-900 px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2"
+                    >
+                        <Search size={14}/> Scan Browser Storage
+                    </button>
+                    {localDataFound && typeof localDataFound === 'object' && (
+                        <button 
+                            onClick={migrateDataToCloud}
+                            className="bg-emerald-500 text-white px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2"
+                        >
+                            <UploadCloud size={14}/> Migrate Found Data
+                        </button>
+                    )}
+                </div>
+                {localDataFound && (
+                    <div className="mt-4 p-3 bg-black/20 rounded-lg text-[10px] font-mono overflow-auto max-h-32">
+                        {typeof localDataFound === 'string' ? localDataFound : JSON.stringify(localDataFound, null, 2)}
+                    </div>
+                )}
+            </div>
+        )}
 
         <main className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6 pb-32">
             <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">

@@ -1,5 +1,5 @@
 {
-"name": "financial-dashboard",
+"name": "church-financial-dashboard",
 "private": true,
 "version": "0.1.0",
 "type": "module",

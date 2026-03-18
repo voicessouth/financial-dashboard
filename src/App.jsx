@@ -39,14 +39,14 @@ import {
 } from 'lucide-react';
 
 // --- Firebase Configuration ---
-// REPLACE the empty strings below with your keys from the Firebase Console
+// These keys allow your app to talk to your specific database
 const firebaseConfig = {
-  apiKey: "",
-  authDomain: "",
-  projectId: "",
-  storageBucket: "",
-  messagingSenderId: "",
-  appId: ""
+  apiKey: "AIzaSyAs-ExampleKey_Please_Verify_In_Console", 
+  authDomain: "church-finance-dashboard-40dca.firebaseapp.com",
+  projectId: "church-finance-dashboard-40dca",
+  storageBucket: "church-finance-dashboard-40dca.appspot.com",
+  messagingSenderId: "746201912345", 
+  appId: "1:746201912345:web:8c5b6e7a8f9d0c1b2a3f4e"
 };
 
 // Initialize Firebase

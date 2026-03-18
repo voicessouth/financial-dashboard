@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { createRoot } from 'react-dom/client';
-import { initializeApp } from 'firebase/app';
+import { initializeApp, getApps } from 'firebase/app';
 import { 
   getFirestore, 
   doc, 
@@ -24,14 +23,36 @@ import {
   Lock,
   Unlock,
   RefreshCw,
-  ChevronDown
+  ChevronDown,
+  AlertCircle
 } from 'lucide-react';
 
-// --- FIREBASE CONFIGURATION ---
-const firebaseConfig = JSON.parse(__firebase_config);
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
+// --- SAFE FIREBASE INITIALIZATION ---
+// We use try-catch and checks for 'undefined' to prevent "ReferenceError"
+let app;
+let auth;
+let db;
+let firebaseConfig = {};
+
+try {
+  // Safe check for the injected configuration variable
+  if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+    firebaseConfig = JSON.parse(__firebase_config);
+  }
+  
+  if (getApps().length === 0 && firebaseConfig.apiKey) {
+    app = initializeApp(firebaseConfig);
+    auth = getAuth(app);
+    db = getFirestore(app);
+  } else if (getApps().length > 0) {
+    app = getApps()[0];
+    auth = getAuth(app);
+    db = getFirestore(app);
+  }
+} catch (e) {
+  console.error("Firebase initialization skipped or failed:", e);
+}
+
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'church-dashboard-v1';
 
 const REVENUE_CATEGORIES = [
@@ -64,8 +85,9 @@ const App = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [showUnlockConfirm, setShowUnlockConfirm] = useState(false);
   const [showOtherInput, setShowOtherInput] = useState(false);
+  const [configError, setConfigError] = useState(false);
 
-  // Generate weeks for 2026
+  // Generate 2026 Fridays (Reporting Days)
   const weeksOfYear = useMemo(() => {
     const weeks = [];
     let current = new Date(2026, 0, 2); 
@@ -78,8 +100,26 @@ const App = () => {
     return weeks;
   }, []);
 
-  // Auth Effect
+  // Auth Effect - Fixed to handle missing auth gracefully
   useEffect(() => {
+    if (!auth) {
+      // If auth isn't initialized, we check every second for a few tries
+      let retries = 0;
+      const interval = setInterval(() => {
+        if (typeof getAuth === 'function' && getApps().length > 0) {
+          window.location.reload(); // Reload once system is ready
+          clearInterval(interval);
+        }
+        retries++;
+        if (retries > 5) {
+          setLoading(false);
+          setConfigError(true);
+          clearInterval(interval);
+        }
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+
     const initAuth = async () => {
       try {
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
@@ -88,9 +128,10 @@ const App = () => {
           await signInAnonymously(auth);
         }
       } catch (err) {
-        console.error("Auth initialization failed", err);
+        console.error("Authentication failed:", err);
       }
     };
+
     initAuth();
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
@@ -99,11 +140,10 @@ const App = () => {
     return () => unsubscribe();
   }, []);
 
-  // Data Sync Effect
+  // Data Sync
   useEffect(() => {
-    if (!user) return;
+    if (!user || !db) return;
     
-    // Path: /artifacts/{appId}/public/data/{docId}
     const docRef = doc(db, 'artifacts', appId, 'public', 'data', selectedSheetDate);
     
     const unsubscribe = onSnapshot(docRef, (docSnap) => {
@@ -120,14 +160,14 @@ const App = () => {
         setIsSubmitted(false);
       }
     }, (err) => {
-      console.error("Firestore Error:", err);
+      console.error("Firestore error:", err);
     });
 
     return () => unsubscribe();
   }, [user, selectedSheetDate]);
 
   const updateDocData = async (updates) => {
-    if (!user) return;
+    if (!user || !db) return;
     setIsSaving(true);
     const docRef = doc(db, 'artifacts', appId, 'public', 'data', selectedSheetDate);
     try {
@@ -194,10 +234,23 @@ const App = () => {
     updateDocData({ expenses: updated });
   };
 
+  if (configError) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-6 text-center">
+        <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-200 max-w-md">
+          <AlertCircle className="text-rose-500 mx-auto mb-4" size={48} />
+          <h2 className="text-xl font-black text-slate-800 mb-2">System Initializing</h2>
+          <p className="text-slate-500 text-sm mb-6">The secure connection is taking longer than expected. Please ensure you are viewing this within the dashboard environment.</p>
+          <button onClick={() => window.location.reload()} className="w-full bg-slate-800 text-white font-black py-4 rounded-2xl text-xs uppercase tracking-widest">Retry Connection</button>
+        </div>
+      </div>
+    );
+  }
+
   if (loading) return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
         <RefreshCw className="text-indigo-500 animate-spin mb-4" size={32} />
-        <p className="font-black text-slate-400 uppercase tracking-widest text-[10px]">Preparing Dashboard...</p>
+        <p className="font-black text-slate-400 uppercase tracking-widest text-[10px]">Connecting to Cloud...</p>
     </div>
   );
 
@@ -240,13 +293,13 @@ const App = () => {
                 Finance Portal {isSubmitted && <Lock size={18} className="text-slate-300" />}
               </h1>
               <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                {isSaving ? 'Saving changes...' : 'Cloud Connection Active'}
+                {isSaving ? 'Syncing...' : 'Encrypted Connection Active'}
               </p>
             </div>
             
             <div className="flex flex-wrap items-center gap-4">
               <div className="bg-slate-50 border border-slate-100 px-4 py-2 rounded-2xl">
-                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-0.5">Bank Start</label>
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-0.5">Bank Balance Start</label>
                 <div className="flex items-center">
                   <span className="text-slate-400 font-bold mr-1">$</span>
                   <input 
@@ -285,7 +338,7 @@ const App = () => {
             <section className={`bg-white p-6 rounded-3xl shadow-sm border border-slate-200 transition-opacity ${isSubmitted ? 'opacity-70 pointer-events-none' : 'opacity-100'}`}>
                 <div className="flex justify-between items-center mb-6">
                   <h2 className="font-bold flex items-center gap-2 text-slate-700">
-                    <TrendingUp className="text-emerald-500" size={20}/> Income
+                    <TrendingUp className="text-emerald-500" size={20}/> Weekly Income
                   </h2>
                   <select 
                     value={selectedIncomeDay} 
@@ -317,7 +370,7 @@ const App = () => {
 
             <section className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 flex flex-col">
                 <h2 className="font-bold mb-6 flex items-center gap-2 text-slate-700">
-                    <Wallet className="text-rose-500" size={20}/> Expenses
+                    <Wallet className="text-rose-500" size={20}/> Expense Ledger
                 </h2>
                 
                 {!isSubmitted ? (
@@ -333,7 +386,7 @@ const App = () => {
                       </select>
                       
                       {showOtherInput && (
-                        <input name="otherDescription" type="text" required placeholder="Expense detail..." className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm" />
+                        <input name="otherDescription" type="text" required placeholder="Describe expense..." className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm" />
                       )}
 
                       <div className="flex gap-2">
@@ -346,7 +399,7 @@ const App = () => {
                   </form>
                 ) : (
                   <div className="mb-6 p-4 bg-slate-50 rounded-2xl text-slate-500 italic text-xs flex gap-2 items-center border border-slate-100">
-                    <Lock size={14} /> This report is locked. Unlock to make changes.
+                    <Lock size={14} /> This report is locked. Use the button below to unlock.
                   </div>
                 )}
 
@@ -354,7 +407,7 @@ const App = () => {
                     {expenses.length === 0 && (
                         <div className="text-center py-12 text-slate-300">
                             <History size={32} className="mx-auto mb-2 opacity-10" />
-                            <p className="text-[10px] font-black uppercase tracking-widest italic">Empty</p>
+                            <p className="text-[10px] font-black uppercase tracking-widest italic">No expenses added</p>
                         </div>
                     )}
                     {expenses.map(exp => (
@@ -380,7 +433,7 @@ const App = () => {
         <footer className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[95%] max-w-4xl bg-slate-900 text-white p-6 rounded-[2.5rem] shadow-2xl z-20 border border-white/10 backdrop-blur-lg">
             <div className="flex justify-between items-center">
               <div>
-                  <p className="text-slate-400 text-[10px] uppercase font-black mb-1 tracking-widest">Calculated Net</p>
+                  <p className="text-slate-400 text-[10px] uppercase font-black mb-1 tracking-widest">Weekly Net Result</p>
                   <p className={`text-2xl font-black ${totals.net >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                     ${totals.net.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                   </p>
@@ -410,11 +463,5 @@ const App = () => {
     </div>
   );
 };
-
-const container = document.getElementById('root');
-if (container) {
-  const root = createRoot(container);
-  root.render(<App />);
-}
 
 export default App;

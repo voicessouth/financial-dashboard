@@ -29,12 +29,12 @@ import {
 
 // --- FIREBASE CONFIGURATION ---
 const firebaseConfig = {
-  apiKey: "YOUR_ACTUAL_API_KEY", 
+  apiKey: "AIzaSyDb6oFZEStklFT_Dt2riDbQC_IJPHcT304",
   authDomain: "church-finance-dashboard-40dca.firebaseapp.com",
   projectId: "church-finance-dashboard-40dca",
-  storageBucket: "church-finance-dashboard-40dca.appspot.com",
-  messagingSenderId: "YOUR_ACTUAL_MESSAGING_SENDER_ID", 
-  appId: "YOUR_ACTUAL_APP_ID" 
+  storageBucket: "church-finance-dashboard-40dca.firebasestorage.app",
+  messagingSenderId: "480863076081",
+  appId: "1:480863076081:web:dd01f7270a7cd158f93350" 
 };
 
 const app = initializeApp(firebaseConfig);

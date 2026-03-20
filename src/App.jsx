@@ -62,6 +62,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [previousWeekEndingBalance, setPreviousWeekEndingBalance] = useState(0);
   const [activeIncomeDay, setActiveIncomeDay] = useState('Sunday');
+  const [expenseCategory, setExpenseCategory] = useState(EXPENSE_CATEGORIES[0]);
 
   const formatDate = (date) => `${date.getMonth() + 1}-${date.getDate()}-${date.getFullYear().toString().slice(-2)}`;
 
@@ -213,7 +214,7 @@ export default function App() {
 
     csvRows.push(["Expense Detail"], ["Category", "Amount"]);
     expenses.forEach(exp => {
-      csvRows.push([exp.category, parseFloat(exp.amount).toFixed(2)]);
+      csvRows.push([exp.category + (exp.otherDetail ? ` (${exp.otherDetail})` : ""), parseFloat(exp.amount).toFixed(2)]);
     });
 
     const csvContent = csvRows.map(row => row.join(",")).join("\n");
@@ -334,8 +335,13 @@ export default function App() {
               <div className="py-12 text-center text-slate-300 text-[10px] font-black uppercase tracking-widest italic">No expenses recorded</div>
             )}
             {expenses.map((exp, idx) => (
-              <div key={idx} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-slate-100 group transition-all">
-                <span className="text-xs font-bold text-slate-700">{exp.category}</span>
+              <div key={idx} className="flex justify-between items-start p-3 bg-slate-50 rounded-xl border border-slate-100 group transition-all">
+                <div className="flex flex-col">
+                  <span className="text-xs font-bold text-slate-700">{exp.category}</span>
+                  {exp.otherDetail && (
+                    <span className="text-[10px] text-slate-400 font-medium italic">{exp.otherDetail}</span>
+                  )}
+                </div>
                 <div className="flex items-center gap-3">
                   <span className="text-xs font-black text-rose-500">-${parseFloat(exp.amount).toFixed(2)}</span>
                   {!isSubmitted && (
@@ -358,17 +364,40 @@ export default function App() {
             <form onSubmit={(e) => {
               e.preventDefault();
               const d = new FormData(e.target);
-              const newItem = { category: d.get('cat'), amount: d.get('amt'), id: Date.now() };
+              const newItem = { 
+                category: d.get('cat'), 
+                amount: d.get('amt'), 
+                otherDetail: d.get('otherDetail') || '',
+                id: Date.now() 
+              };
               const updated = [...expenses, newItem];
               setExpenses(updated);
               updateCloudData({ expenses: updated });
               e.target.reset();
-            }} className="flex gap-2 p-2 bg-slate-100 rounded-2xl">
-              <select name="cat" className="flex-1 bg-transparent text-xs font-bold outline-none px-2" required>
-                {EXPENSE_CATEGORIES.map(c => <option key={c}>{c}</option>)}
-              </select>
-              <input name="amt" type="number" step="0.01" className="w-20 bg-white p-2 rounded-xl text-xs font-bold outline-none border border-transparent focus:border-indigo-500" placeholder="0.00" required />
-              <button className="bg-slate-900 text-white p-2 rounded-xl hover:bg-black transition-colors"><Plus size={16}/></button>
+              setExpenseCategory(EXPENSE_CATEGORIES[0]);
+            }} className="flex flex-col gap-2 p-2 bg-slate-100 rounded-2xl">
+              <div className="flex gap-2">
+                <select 
+                  name="cat" 
+                  value={expenseCategory}
+                  onChange={(e) => setExpenseCategory(e.target.value)}
+                  className="flex-1 bg-transparent text-xs font-bold outline-none px-2" 
+                  required
+                >
+                  {EXPENSE_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                </select>
+                <input name="amt" type="number" step="0.01" className="w-20 bg-white p-2 rounded-xl text-xs font-bold outline-none border border-transparent focus:border-indigo-500" placeholder="0.00" required />
+                <button className="bg-slate-900 text-white p-2 rounded-xl hover:bg-black transition-colors"><Plus size={16}/></button>
+              </div>
+              {expenseCategory === 'Other' && (
+                <input 
+                  name="otherDetail" 
+                  type="text" 
+                  placeholder="Details (e.g. John Smith - Plumbing)" 
+                  className="bg-white p-2 rounded-xl text-[10px] font-bold outline-none border border-transparent focus:border-indigo-500"
+                  required
+                />
+              )}
             </form>
           )}
         </div>

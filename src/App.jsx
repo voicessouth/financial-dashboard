@@ -9,7 +9,8 @@ import {
 import { 
   getAuth, 
   signInAnonymously, 
-  onAuthStateChanged 
+  onAuthStateChanged,
+  signOut
 } from 'firebase/auth';
 import { 
   TrendingUp, 
@@ -18,7 +19,10 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
-  CalendarDays
+  CalendarDays,
+  Lock,
+  User,
+  LogOut
 } from 'lucide-react';
 
 // --- FIREBASE CONFIGURATION ---
@@ -36,6 +40,7 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const appId = 'church-financial-dashboard';
 
+// --- APP CONSTANTS ---
 const INCOME_DAYS = ['Sunday', 'Tuesday', 'End of Week', 'End of Month'];
 
 const REVENUE_CATEGORIES = [
@@ -52,10 +57,18 @@ const EXPENSE_CATEGORIES = [
   'Team Pest USA', 'First Citizens Bank', 'Other'
 ];
 
+// Simple Authentication Credentials (Change these for your own use)
+const ADMIN_CREDENTIALS = {
+  loginId: "voicessouth",
+  password: "3894South"
+};
+
 export default function App() {
   const [user, setUser] = useState(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [loginError, setLoginError] = useState('');
   const [selectedSheetDate, setSelectedSheetDate] = useState(null);
-  const [revenueData, setRevenueData] = useState({}); // Structure: { [day]: { [category]: amount } }
+  const [revenueData, setRevenueData] = useState({});
   const [expenses, setExpenses] = useState([]);
   const [manualStartingBalance, setManualStartingBalance] = useState(null);
   const [isSubmitted, setIsSubmitted] = useState(false);
@@ -97,7 +110,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!user || !selectedSheetDate || firebaseConfig.apiKey === "PASTE_YOUR_API_KEY_HERE") return;
+    if (!user || !selectedSheetDate || !isAuthenticated || firebaseConfig.apiKey === "PASTE_YOUR_API_KEY_HERE") return;
     const docPath = doc(db, 'artifacts', appId, 'public', 'data', 'reports', selectedSheetDate);
     
     const unsubscribe = onSnapshot(docPath, (docSnap) => {
@@ -113,12 +126,12 @@ export default function App() {
         setManualStartingBalance(null);
         setIsSubmitted(false);
       }
-    });
+    }, (err) => console.error("Snapshot Error:", err));
     return () => unsubscribe();
-  }, [user, selectedSheetDate]);
+  }, [user, selectedSheetDate, isAuthenticated]);
 
   useEffect(() => {
-    if (!user || !selectedSheetDate || firebaseConfig.apiKey === "PASTE_YOUR_API_KEY_HERE") return;
+    if (!user || !selectedSheetDate || !isAuthenticated || firebaseConfig.apiKey === "PASTE_YOUR_API_KEY_HERE") return;
     
     const [m, d, y] = selectedSheetDate.split('-').map(Number);
     const prevDateObj = new Date(2000 + y, m - 1, d);
@@ -146,7 +159,7 @@ export default function App() {
       }
     });
     return () => unsubscribe();
-  }, [user, selectedSheetDate]);
+  }, [user, selectedSheetDate, isAuthenticated]);
 
   const currentWeekTotals = useMemo(() => {
     let totalRev = 0;
@@ -163,6 +176,24 @@ export default function App() {
     };
   }, [revenueData, expenses, manualStartingBalance, previousWeekEndingBalance]);
 
+  const handleLogin = (e) => {
+    e.preventDefault();
+    const data = new FormData(e.target);
+    const id = data.get('loginId');
+    const pw = data.get('password');
+
+    if (id === ADMIN_CREDENTIALS.loginId && pw === ADMIN_CREDENTIALS.password) {
+      setIsAuthenticated(true);
+      setLoginError('');
+    } else {
+      setLoginError('Invalid Login ID or Password');
+    }
+  };
+
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+  };
+
   const changeWeek = (direction) => {
     const [m, d, y] = selectedSheetDate.split('-').map(Number);
     const date = new Date(2000 + y, m - 1, d);
@@ -171,7 +202,7 @@ export default function App() {
   };
 
   const updateCloudData = async (updates) => {
-    if (!user || !selectedSheetDate || isSubmitted) return;
+    if (!user || !selectedSheetDate || isSubmitted || !isAuthenticated) return;
     const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'reports', selectedSheetDate);
     await setDoc(docRef, { ...updates, lastUpdated: new Date().toISOString() }, { merge: true });
   };
@@ -229,8 +260,76 @@ export default function App() {
     document.body.removeChild(link);
   };
 
-  if (loading) return <div className="flex items-center justify-center min-h-screen text-slate-400 font-bold tracking-widest animate-pulse uppercase">Dashboard Initializing...</div>;
+  if (loading) return (
+    <div className="flex items-center justify-center min-h-screen bg-slate-100 text-slate-400 font-bold tracking-widest animate-pulse uppercase">
+      Dashboard Initializing...
+    </div>
+  );
 
+  // --- LOGIN SCREEN ---
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white rounded-[2.5rem] p-8 shadow-2xl border-b-8 border-indigo-600">
+          <div className="flex justify-center mb-6">
+            <div className="bg-indigo-50 p-4 rounded-full text-indigo-600">
+              <Lock size={32} />
+            </div>
+          </div>
+          <div className="text-center mb-8">
+            <h1 className="text-2xl font-black text-slate-800 uppercase tracking-tight">Access Control</h1>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Authorized Personnel Only</p>
+          </div>
+          
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Login ID</label>
+              <div className="relative">
+                <User size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" />
+                <input 
+                  name="loginId" 
+                  type="text" 
+                  required 
+                  className="w-full pl-12 pr-4 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-indigo-500 transition-all font-bold text-slate-700" 
+                  placeholder="Enter ID"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Password</label>
+              <div className="relative">
+                <Lock size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" />
+                <input 
+                  name="password" 
+                  type="password" 
+                  required 
+                  className="w-full pl-12 pr-4 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-indigo-500 transition-all font-bold text-slate-700" 
+                  placeholder="••••••••"
+                />
+              </div>
+            </div>
+            
+            {loginError && (
+              <p className="text-rose-500 text-[10px] font-black uppercase tracking-widest text-center animate-bounce">{loginError}</p>
+            )}
+
+            <button 
+              type="submit" 
+              className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-indigo-200 hover:bg-indigo-700 hover:-translate-y-0.5 transition-all active:scale-95"
+            >
+              Sign In
+            </button>
+          </form>
+          
+          <p className="text-center text-[9px] font-bold text-slate-300 uppercase mt-8 tracking-tighter">
+            System protected by secure encrypted database
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // --- MAIN DASHBOARD ---
   return (
     <div className="min-h-screen bg-slate-100 p-4 font-sans text-slate-900 pb-32">
       <header className="max-w-5xl mx-auto mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -403,13 +502,21 @@ export default function App() {
         </div>
       </main>
 
-      <footer className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[95%] max-w-2xl bg-white/90 backdrop-blur-xl border border-white shadow-2xl rounded-full p-2 flex justify-between items-center z-50">
-        <button 
-          onClick={exportToCSV}
-          className="flex items-center gap-2 px-6 py-3 rounded-full font-black text-[10px] uppercase tracking-widest text-slate-600 hover:bg-slate-100 transition-all border border-slate-100"
-        >
-          <Download size={14}/> Export CSV
-        </button>
+      <footer className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[95%] max-w-4xl bg-white/90 backdrop-blur-xl border border-white shadow-2xl rounded-full p-2 flex justify-between items-center z-50">
+        <div className="flex gap-2">
+          <button 
+            onClick={exportToCSV}
+            className="flex items-center gap-2 px-6 py-3 rounded-full font-black text-[10px] uppercase tracking-widest text-slate-600 hover:bg-slate-100 transition-all border border-slate-100"
+          >
+            <Download size={14}/> Export CSV
+          </button>
+          <button 
+            onClick={handleLogout}
+            className="flex items-center gap-2 px-4 py-3 rounded-full font-black text-[10px] uppercase tracking-widest text-rose-500 hover:bg-rose-50 transition-all border border-rose-100"
+          >
+            <LogOut size={14}/>
+          </button>
+        </div>
         
         <div className="flex items-center gap-2 mr-2">
           <button 

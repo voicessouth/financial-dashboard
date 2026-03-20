@@ -1,163 +1,27 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { initializeApp, getApps } from 'firebase/app';
-import { 
-  getFirestore, 
-  doc, 
-  setDoc, 
-  onSnapshot
-} from 'firebase/firestore';
-import { 
-  getAuth, 
-  onAuthStateChanged,
-  signInAnonymously
-} from 'firebase/auth';
-import { 
-  TrendingUp, 
-  Wallet, 
-  Calendar, 
-  History,
-  Plus,
-  Trash2,
-  CheckCircle2,
-  Lock,
-  Unlock,
-  RefreshCw,
-  ChevronDown,
-  AlertCircle
-} from 'lucide-react';
-
-// Safe check for the injected configuration variable
-let firebaseConfig = {};
-try {
-  if (typeof __firebase_config !== 'undefined' && __firebase_config) {
-    firebaseConfig = JSON.parse(__firebase_config);
-  }
-} catch (e) {
-  console.warn("Firebase config not found in global scope.");
+{
+"name": "church-finance-dashboard",
+"private": true,
+"version": "0.0.0",
+"type": "module",
+"scripts": {
+"dev": "vite",
+"build": "vite build",
+"preview": "vite preview"
+},
+"dependencies": {
+"firebase": "^10.8.0",
+"lucide-react": "^0.344.0",
+"react": "^18.2.0",
+"react-dom": "^18.2.0"
+},
+"devDependencies": {
+"@types/react": "^18.2.56",
+"@types/react-dom": "^18.2.19",
+"@vitejs/plugin-react": "^4.2.1",
+"autoprefixer": "^10.4.17",
+"postcss": "^8.4.35",
+"tailwind-merge": "^2.2.1",
+"tailwindcss": "^3.4.1",
+"vite": "^5.1.4"
 }
-
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'church-dashboard-v1';
-
-// Initializing Firebase safely
-let app, auth, db;
-if (firebaseConfig.apiKey) {
-    app = initializeApp(firebaseConfig);
-    auth = getAuth(app);
-    db = getFirestore(app);
 }
-
-const REVENUE_CATEGORIES = ['Cash/Checks', 'Credit Card', 'Text', 'Givelify', 'Tithely', 'CashApp', 'Zelle', 'Website Giving'];
-const INCOME_DAY_OPTIONS = ['Sun', 'Tue', 'End of week', 'End of month'];
-const EXPENSE_CATEGORIES = ['Mortgage', 'Pastor Payroll', 'Staff Payroll', 'Utilities', 'Maintenance', 'Ministry', 'Other'];
-
-const App = () => {
-  const [user, setUser] = useState(null);
-  const [selectedSheetDate, setSelectedSheetDate] = useState('1-2-26');
-  const [selectedIncomeDay, setSelectedIncomeDay] = useState('Sun');
-  const [revenueData, setRevenueData] = useState({});
-  const [bankBalance, setBankBalance] = useState(0);
-  const [expenses, setExpenses] = useState([]);
-  const [isSubmitted, setIsSubmitted] = useState(false);
-  const [loading, setLoading] = useState(true);
-
-  const weeksOfYear = useMemo(() => {
-    const weeks = [];
-    let current = new Date(2026, 0, 2); 
-    const endOfYear = new Date(2026, 11, 31);
-    while (current <= endOfYear) {
-      const dateStr = `${current.getMonth() + 1}-${current.getDate()}-${current.getFullYear().toString().slice(-2)}`;
-      weeks.push(dateStr);
-      current.setDate(current.getDate() + 7);
-    }
-    return weeks;
-  }, []);
-
-  useEffect(() => {
-    if (!auth) { setLoading(false); return; }
-    signInAnonymously(auth).catch(console.error);
-    return onAuthStateChanged(auth, (u) => {
-      setUser(u);
-      setLoading(false);
-    });
-  }, []);
-
-  useEffect(() => {
-    if (!user || !db) return;
-    const docRef = doc(db, 'artifacts', appId, 'public', 'data', selectedSheetDate);
-    return onSnapshot(docRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        setRevenueData(data.revenue || {});
-        setBankBalance(data.bankBalance || 0);
-        setExpenses(data.expenses || []);
-        setIsSubmitted(data.status === 'submitted');
-      } else {
-        setRevenueData({}); setBankBalance(0); setExpenses([]); setIsSubmitted(false);
-      }
-    });
-  }, [user, selectedSheetDate]);
-
-  const totals = useMemo(() => {
-    let rev = parseFloat(bankBalance) || 0;
-    Object.values(revenueData).forEach(day => Object.values(day).forEach(v => rev += (parseFloat(v) || 0)));
-    const exp = expenses.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0);
-    return { rev, exp, net: rev - exp };
-  }, [revenueData, expenses, bankBalance]);
-
-  if (loading) return <div className="p-20 text-center font-bold">Loading Dashboard...</div>;
-  if (!auth) return <div className="p-20 text-center text-rose-500 font-bold">Error: Firebase Configuration Missing.</div>;
-
-  return (
-    <div className="min-h-screen bg-slate-50 p-6 font-sans pb-32">
-        <header className="max-w-4xl mx-auto mb-8 flex justify-between items-center bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-            <div>
-              <h1 className="text-xl font-black text-slate-800">Finance Dashboard</h1>
-              <p className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Live Cloud Sync</p>
-            </div>
-            <select 
-              value={selectedSheetDate} 
-              onChange={(e) => setSelectedSheetDate(e.target.value)}
-              className="bg-slate-100 px-4 py-2 rounded-xl font-bold text-sm outline-none"
-            >
-              {weeksOfYear.map(w => <option key={w} value={w}>{w.replace(/-/g, '/')}</option>)}
-            </select>
-        </header>
-
-        <main className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                <h2 className="font-bold mb-4 flex items-center gap-2"><TrendingUp size={18}/> Income</h2>
-                <div className="space-y-3">
-                    {REVENUE_CATEGORIES.map(cat => (
-                        <div key={cat} className="flex flex-col">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-1">{cat}</label>
-                            <input 
-                                type="number" 
-                                className="bg-slate-50 p-2 rounded-lg border border-slate-200 outline-none focus:border-indigo-500"
-                                placeholder="0.00"
-                                value={revenueData[selectedIncomeDay]?.[cat] || ''}
-                                onChange={(e) => {
-                                    const updated = {...revenueData};
-                                    if(!updated[selectedIncomeDay]) updated[selectedIncomeDay] = {};
-                                    updated[selectedIncomeDay][cat] = e.target.value;
-                                    setRevenueData(updated);
-                                    setDoc(doc(db, 'artifacts', appId, 'public', 'data', selectedSheetDate), { revenue: updated }, {merge: true});
-                                }}
-                            />
-                        </div>
-                    ))}
-                </div>
-            </div>
-
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                <h2 className="font-bold mb-4 flex items-center gap-2"><Wallet size={18}/> Net Position</h2>
-                <div className="bg-slate-900 text-white p-6 rounded-xl">
-                    <p className="text-slate-400 text-xs font-bold uppercase mb-1">Weekly Net</p>
-                    <p className="text-3xl font-black">${totals.net.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
-                </div>
-            </div>
-        </main>
-    </div>
-  );
-};
-
-export default App;

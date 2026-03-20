@@ -17,11 +17,11 @@ import {
   Plus,
   ChevronLeft,
   ChevronRight,
-  Download
+  Download,
+  CalendarDays
 } from 'lucide-react';
 
 // --- FIREBASE CONFIGURATION ---
-// IMPORTANT: Replace these with your actual keys from the Firebase Console
 const firebaseConfig = {
   apiKey: "AIzaSyDb6oFZEStklFT_Dt2riDbQC_IJPHcT304",
   authDomain: "church-finance-dashboard-40dca.firebaseapp.com",
@@ -35,6 +35,8 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const appId = 'church-financial-dashboard';
+
+const INCOME_DAYS = ['Sunday', 'Tuesday', 'End of Week', 'End of Month'];
 
 const REVENUE_CATEGORIES = [
   'Cash/Checks', 'Credit Card', 'Text', 'Givelify', 
@@ -53,16 +55,16 @@ const EXPENSE_CATEGORIES = [
 export default function App() {
   const [user, setUser] = useState(null);
   const [selectedSheetDate, setSelectedSheetDate] = useState(null);
-  const [revenueData, setRevenueData] = useState({});
+  const [revenueData, setRevenueData] = useState({}); // Structure: { [day]: { [category]: amount } }
   const [expenses, setExpenses] = useState([]);
   const [manualStartingBalance, setManualStartingBalance] = useState(null);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [previousWeekEndingBalance, setPreviousWeekEndingBalance] = useState(0);
+  const [activeIncomeDay, setActiveIncomeDay] = useState('Sunday');
 
   const formatDate = (date) => `${date.getMonth() + 1}-${date.getDate()}-${date.getFullYear().toString().slice(-2)}`;
 
-  // Logic for Friday Reporting Cycle (Base 1-2-26)
   const getWorksheetDate = (dateObj) => {
     const d = new Date(dateObj);
     const day = d.getDay(); 
@@ -93,7 +95,6 @@ export default function App() {
     setSelectedSheetDate(current);
   }, []);
 
-  // Listen to Current Week Data
   useEffect(() => {
     if (!user || !selectedSheetDate || firebaseConfig.apiKey === "PASTE_YOUR_API_KEY_HERE") return;
     const docPath = doc(db, 'artifacts', appId, 'public', 'data', 'reports', selectedSheetDate);
@@ -106,9 +107,7 @@ export default function App() {
         setManualStartingBalance(data.startingBalance ?? null);
         setIsSubmitted(data.status === 'submitted');
       } else {
-        const initialRev = {};
-        REVENUE_CATEGORIES.forEach(cat => initialRev[cat] = 0);
-        setRevenueData(initialRev);
+        setRevenueData({});
         setExpenses([]);
         setManualStartingBalance(null);
         setIsSubmitted(false);
@@ -117,7 +116,6 @@ export default function App() {
     return () => unsubscribe();
   }, [user, selectedSheetDate]);
 
-  // Listen to Previous Week for Balance Carry-Forward
   useEffect(() => {
     if (!user || !selectedSheetDate || firebaseConfig.apiKey === "PASTE_YOUR_API_KEY_HERE") return;
     
@@ -131,10 +129,17 @@ export default function App() {
     const unsubscribe = onSnapshot(prevDocRef, (snap) => {
       if (snap.exists()) {
         const data = snap.data();
-        const rev = Object.values(data.revenue || {}).reduce((a, b) => a + (parseFloat(b) || 0), 0);
+        let totalPrevRev = 0;
+        const revObj = data.revenue || {};
+        Object.values(revObj).forEach(dayData => {
+          Object.values(dayData).forEach(val => {
+            totalPrevRev += (parseFloat(val) || 0);
+          });
+        });
+
         const exp = (data.expenses || []).reduce((a, b) => a + (parseFloat(b.amount) || 0), 0);
         const start = data.startingBalance || 0;
-        setPreviousWeekEndingBalance(start + rev - exp);
+        setPreviousWeekEndingBalance(start + totalPrevRev - exp);
       } else {
         setPreviousWeekEndingBalance(0);
       }
@@ -143,11 +148,17 @@ export default function App() {
   }, [user, selectedSheetDate]);
 
   const currentWeekTotals = useMemo(() => {
-    const rev = Object.values(revenueData).reduce((acc, val) => acc + (parseFloat(val) || 0), 0);
+    let totalRev = 0;
+    Object.values(revenueData).forEach(dayData => {
+      Object.values(dayData).forEach(val => {
+        totalRev += (parseFloat(val) || 0);
+      });
+    });
+
     const exp = expenses.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0);
     const start = manualStartingBalance !== null ? parseFloat(manualStartingBalance) : previousWeekEndingBalance;
     return { 
-      rev, exp, net: rev - exp, start: start, end: start + (rev - exp)
+      rev: totalRev, exp, net: totalRev - exp, start: start, end: start + (totalRev - exp)
     };
   }, [revenueData, expenses, manualStartingBalance, previousWeekEndingBalance]);
 
@@ -164,6 +175,18 @@ export default function App() {
     await setDoc(docRef, { ...updates, lastUpdated: new Date().toISOString() }, { merge: true });
   };
 
+  const handleRevenueChange = (category, value) => {
+    const updatedRevenue = {
+      ...revenueData,
+      [activeIncomeDay]: {
+        ...(revenueData[activeIncomeDay] || {}),
+        [category]: value
+      }
+    };
+    setRevenueData(updatedRevenue);
+    updateCloudData({ revenue: updatedRevenue });
+  };
+
   const exportToCSV = () => {
     let csvRows = [
       ["Church Financial Report", `Week of ${selectedSheetDate}`],
@@ -175,15 +198,20 @@ export default function App() {
       ["Net Cash Flow", currentWeekTotals.net.toFixed(2)],
       ["Ending Balance", currentWeekTotals.end.toFixed(2)],
       [],
-      ["Revenue Detail"],
-      ["Category", "Amount"]
+      ["Revenue Detail By Day"]
     ];
 
-    REVENUE_CATEGORIES.forEach(cat => {
-      csvRows.push([cat, (parseFloat(revenueData[cat]) || 0).toFixed(2)]);
+    INCOME_DAYS.forEach(day => {
+      csvRows.push([day]);
+      csvRows.push(["Category", "Amount"]);
+      REVENUE_CATEGORIES.forEach(cat => {
+        const val = (revenueData[day] && revenueData[day][cat]) || 0;
+        csvRows.push([cat, parseFloat(val).toFixed(2)]);
+      });
+      csvRows.push([]);
     });
 
-    csvRows.push([], ["Expense Detail"], ["Category", "Amount"]);
+    csvRows.push(["Expense Detail"], ["Category", "Amount"]);
     expenses.forEach(exp => {
       csvRows.push([exp.category, parseFloat(exp.amount).toFixed(2)]);
     });
@@ -227,12 +255,12 @@ export default function App() {
         </div>
 
         <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm md:col-span-2 flex justify-between items-center text-center">
-          <button onClick={() => changeWeek(-1)} className="p-3 hover:bg-slate-100 rounded-full text-slate-400"><ChevronLeft/></button>
+          <button onClick={() => changeWeek(-1)} className="p-3 hover:bg-slate-100 rounded-full text-slate-400 transition-colors"><ChevronLeft/></button>
           <div>
             <h1 className="text-xl font-black text-slate-800 uppercase tracking-tight">Week of {selectedSheetDate}</h1>
             <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">Friday Reporting Cycle</p>
           </div>
-          <button onClick={() => changeWeek(1)} className="p-3 hover:bg-slate-100 rounded-full text-slate-400"><ChevronRight/></button>
+          <button onClick={() => changeWeek(1)} className="p-3 hover:bg-slate-100 rounded-full text-slate-400 transition-colors"><ChevronRight/></button>
         </div>
       </header>
 
@@ -252,39 +280,77 @@ export default function App() {
       </div>
 
       <main className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* REVENUE SECTION */}
         <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
-          <h3 className="font-black text-xs uppercase text-slate-400 mb-6 flex items-center gap-2 tracking-widest">
-            <TrendingUp size={16} className="text-emerald-500"/> Revenue
+          <h3 className="font-black text-xs uppercase text-slate-400 mb-4 flex items-center gap-2 tracking-widest">
+            <TrendingUp size={16} className="text-emerald-500"/> Revenue Tracking
           </h3>
+          
+          {/* Day Tabs */}
+          <div className="flex flex-wrap gap-1 mb-6 bg-slate-50 p-1.5 rounded-2xl border border-slate-100">
+            {INCOME_DAYS.map(day => (
+              <button
+                key={day}
+                onClick={() => setActiveIncomeDay(day)}
+                className={`flex-1 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all ${
+                  activeIncomeDay === day 
+                  ? 'bg-white text-indigo-600 shadow-sm border border-slate-100' 
+                  : 'text-slate-400 hover:text-slate-600'
+                }`}
+              >
+                {day}
+              </button>
+            ))}
+          </div>
+
           <div className="space-y-3">
+            <div className="flex items-center gap-2 mb-2 px-1">
+              <CalendarDays size={14} className="text-indigo-400" />
+              <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">{activeIncomeDay} Income</span>
+            </div>
             {REVENUE_CATEGORIES.map(cat => (
               <div key={cat} className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-600">{cat}</span>
                 <input 
                   type="number" 
-                  value={revenueData[cat] || ''} 
+                  value={(revenueData[activeIncomeDay] && revenueData[activeIncomeDay][cat]) || ''} 
                   disabled={isSubmitted}
-                  onChange={(e) => {
-                    const updated = { ...revenueData, [cat]: e.target.value };
-                    setRevenueData(updated);
-                    updateCloudData({ revenue: updated });
-                  }}
+                  onChange={(e) => handleRevenueChange(cat, e.target.value)}
                   className="w-32 p-1.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-right outline-none focus:border-indigo-500"
+                  placeholder="0.00"
                 />
               </div>
             ))}
           </div>
         </div>
 
+        {/* EXPENSES SECTION */}
         <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 flex flex-col">
           <h3 className="font-black text-xs uppercase text-slate-400 mb-6 flex items-center gap-2 tracking-widest">
             <Wallet size={16} className="text-rose-500"/> Expenses
           </h3>
-          <div className="flex-1 overflow-y-auto max-h-[320px] mb-4 space-y-2 pr-1">
+          <div className="flex-1 overflow-y-auto max-h-[350px] mb-4 space-y-2 pr-1">
+            {expenses.length === 0 && (
+              <div className="py-12 text-center text-slate-300 text-[10px] font-black uppercase tracking-widest italic">No expenses recorded</div>
+            )}
             {expenses.map((exp, idx) => (
-              <div key={idx} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-slate-100">
+              <div key={idx} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-slate-100 group transition-all">
                 <span className="text-xs font-bold text-slate-700">{exp.category}</span>
-                <span className="text-xs font-black text-rose-500">-${parseFloat(exp.amount).toFixed(2)}</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-black text-rose-500">-${parseFloat(exp.amount).toFixed(2)}</span>
+                  {!isSubmitted && (
+                    <button 
+                      onClick={() => {
+                        const updated = expenses.filter((_, i) => i !== idx);
+                        setExpenses(updated);
+                        updateCloudData({ expenses: updated });
+                      }}
+                      className="text-slate-300 hover:text-rose-500 transition-colors"
+                    >
+                      <Plus size={14} className="rotate-45" />
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>

@@ -41,12 +41,12 @@ import {
 // --- Firebase Configuration ---
 // These keys allow your app to talk to your specific database
 const firebaseConfig = {
-  apiKey: "AIzaSyAs-ExampleKey_Please_Verify_In_Console", 
+  apiKey: "AIzaSyDb6oFZEStklFT_Dt2riDbQC_IJPHcT304",
   authDomain: "church-finance-dashboard-40dca.firebaseapp.com",
   projectId: "church-finance-dashboard-40dca",
-  storageBucket: "church-finance-dashboard-40dca.appspot.com",
-  messagingSenderId: "746201912345", 
-  appId: "1:746201912345:web:8c5b6e7a8f9d0c1b2a3f4e"
+  storageBucket: "church-finance-dashboard-40dca.firebasestorage.app",
+  messagingSenderId: "480863076081",
+  appId: "1:480863076081:web:dd01f7270a7cd158f93350"
 };
 
 // Initialize Firebase

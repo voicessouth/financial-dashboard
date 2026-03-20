@@ -14,11 +14,10 @@ import {
 import { 
   TrendingUp, 
   Wallet, 
-  History,
   Plus,
   ChevronLeft,
   ChevronRight,
-  ArrowRightLeft
+  Download
 } from 'lucide-react';
 
 // --- FIREBASE CONFIGURATION ---
@@ -59,15 +58,14 @@ export default function App() {
   const [manualStartingBalance, setManualStartingBalance] = useState(null);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [loading, setLoading] = useState(true);
-  
   const [previousWeekEndingBalance, setPreviousWeekEndingBalance] = useState(0);
 
   const formatDate = (date) => `${date.getMonth() + 1}-${date.getDate()}-${date.getFullYear().toString().slice(-2)}`;
 
-  // Corrected to use Friday as the base (1-2-26 is a Friday)
+  // Logic for Friday Reporting Cycle (Base 1-2-26)
   const getWorksheetDate = (dateObj) => {
     const d = new Date(dateObj);
-    const day = d.getDay(); // 0=Sun, 5=Fri
+    const day = d.getDay(); 
     const diff = (day >= 5) ? (day - 5) : (day + 2);
     const targetFriday = new Date(d);
     targetFriday.setDate(d.getDate() - diff);
@@ -95,7 +93,7 @@ export default function App() {
     setSelectedSheetDate(current);
   }, []);
 
-  // Listen to Current Week
+  // Listen to Current Week Data
   useEffect(() => {
     if (!user || !selectedSheetDate || firebaseConfig.apiKey === "PASTE_YOUR_API_KEY_HERE") return;
     const docPath = doc(db, 'artifacts', appId, 'public', 'data', 'reports', selectedSheetDate);
@@ -166,7 +164,43 @@ export default function App() {
     await setDoc(docRef, { ...updates, lastUpdated: new Date().toISOString() }, { merge: true });
   };
 
-  if (loading) return <div className="flex items-center justify-center min-h-screen text-slate-400 font-bold uppercase tracking-widest animate-pulse">Loading...</div>;
+  const exportToCSV = () => {
+    let csvRows = [
+      ["Church Financial Report", `Week of ${selectedSheetDate}`],
+      [],
+      ["Summary"],
+      ["Starting Balance", currentWeekTotals.start.toFixed(2)],
+      ["Total Revenue", currentWeekTotals.rev.toFixed(2)],
+      ["Total Expenses", currentWeekTotals.exp.toFixed(2)],
+      ["Net Cash Flow", currentWeekTotals.net.toFixed(2)],
+      ["Ending Balance", currentWeekTotals.end.toFixed(2)],
+      [],
+      ["Revenue Detail"],
+      ["Category", "Amount"]
+    ];
+
+    REVENUE_CATEGORIES.forEach(cat => {
+      csvRows.push([cat, (parseFloat(revenueData[cat]) || 0).toFixed(2)]);
+    });
+
+    csvRows.push([], ["Expense Detail"], ["Category", "Amount"]);
+    expenses.forEach(exp => {
+      csvRows.push([exp.category, parseFloat(exp.amount).toFixed(2)]);
+    });
+
+    const csvContent = csvRows.map(row => row.join(",")).join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Church_Report_${selectedSheetDate}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  if (loading) return <div className="flex items-center justify-center min-h-screen text-slate-400 font-bold tracking-widest animate-pulse uppercase">Dashboard Initializing...</div>;
 
   return (
     <div className="min-h-screen bg-slate-100 p-4 font-sans text-slate-900 pb-32">
@@ -192,10 +226,10 @@ export default function App() {
           </p>
         </div>
 
-        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm md:col-span-2 flex justify-between items-center">
+        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm md:col-span-2 flex justify-between items-center text-center">
           <button onClick={() => changeWeek(-1)} className="p-3 hover:bg-slate-100 rounded-full text-slate-400"><ChevronLeft/></button>
-          <div className="text-center">
-            <h1 className="text-xl font-black text-slate-800 uppercase">Week of {selectedSheetDate}</h1>
+          <div>
+            <h1 className="text-xl font-black text-slate-800 uppercase tracking-tight">Week of {selectedSheetDate}</h1>
             <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">Friday Reporting Cycle</p>
           </div>
           <button onClick={() => changeWeek(1)} className="p-3 hover:bg-slate-100 rounded-full text-slate-400"><ChevronRight/></button>
@@ -203,23 +237,25 @@ export default function App() {
       </header>
 
       <div className="max-w-5xl mx-auto mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 text-center">
-            <p className="text-[9px] font-black text-slate-400 uppercase">Revenue</p>
-            <p className="text-lg font-black text-emerald-600">+${currentWeekTotals.rev.toLocaleString()}</p>
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 text-center shadow-sm">
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Revenue</p>
+            <p className="text-xl font-black text-emerald-600">+${currentWeekTotals.rev.toLocaleString()}</p>
         </div>
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 text-center">
-            <p className="text-[9px] font-black text-slate-400 uppercase">Expenses</p>
-            <p className="text-lg font-black text-rose-600">-${currentWeekTotals.exp.toLocaleString()}</p>
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 text-center shadow-sm">
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Expenses</p>
+            <p className="text-xl font-black text-rose-600">-${currentWeekTotals.exp.toLocaleString()}</p>
         </div>
-        <div className="bg-indigo-600 p-4 rounded-2xl shadow-lg text-center text-white">
-            <p className="text-[9px] font-black text-indigo-200 uppercase">Ending Balance</p>
-            <p className="text-lg font-black">${currentWeekTotals.end.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+        <div className="bg-indigo-600 p-5 rounded-2xl shadow-lg text-center text-white">
+            <p className="text-[9px] font-black text-indigo-200 uppercase tracking-widest mb-1">Ending Balance</p>
+            <p className="text-xl font-black">${currentWeekTotals.end.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
         </div>
       </div>
 
       <main className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
-          <h3 className="font-black text-xs uppercase text-slate-400 mb-6 flex items-center gap-2"><TrendingUp size={16} className="text-emerald-500"/> Revenue</h3>
+          <h3 className="font-black text-xs uppercase text-slate-400 mb-6 flex items-center gap-2 tracking-widest">
+            <TrendingUp size={16} className="text-emerald-500"/> Revenue
+          </h3>
           <div className="space-y-3">
             {REVENUE_CATEGORIES.map(cat => (
               <div key={cat} className="flex items-center justify-between">
@@ -233,7 +269,7 @@ export default function App() {
                     setRevenueData(updated);
                     updateCloudData({ revenue: updated });
                   }}
-                  className="w-32 p-1.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-right"
+                  className="w-32 p-1.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-right outline-none focus:border-indigo-500"
                 />
               </div>
             ))}
@@ -241,8 +277,10 @@ export default function App() {
         </div>
 
         <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 flex flex-col">
-          <h3 className="font-black text-xs uppercase text-slate-400 mb-6 flex items-center gap-2"><Wallet size={16} className="text-rose-500"/> Expenses</h3>
-          <div className="flex-1 overflow-y-auto max-h-[300px] mb-4 space-y-2">
+          <h3 className="font-black text-xs uppercase text-slate-400 mb-6 flex items-center gap-2 tracking-widest">
+            <Wallet size={16} className="text-rose-500"/> Expenses
+          </h3>
+          <div className="flex-1 overflow-y-auto max-h-[320px] mb-4 space-y-2 pr-1">
             {expenses.map((exp, idx) => (
               <div key={idx} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-slate-100">
                 <span className="text-xs font-bold text-slate-700">{exp.category}</span>
@@ -260,25 +298,33 @@ export default function App() {
               updateCloudData({ expenses: updated });
               e.target.reset();
             }} className="flex gap-2 p-2 bg-slate-100 rounded-2xl">
-              <select name="cat" className="flex-1 bg-transparent text-xs font-bold outline-none" required>
+              <select name="cat" className="flex-1 bg-transparent text-xs font-bold outline-none px-2" required>
                 {EXPENSE_CATEGORIES.map(c => <option key={c}>{c}</option>)}
               </select>
-              <input name="amt" type="number" step="0.01" className="w-20 bg-white p-2 rounded-xl text-xs font-bold" placeholder="0.00" required />
-              <button className="bg-slate-900 text-white p-2 rounded-xl"><Plus size={16}/></button>
+              <input name="amt" type="number" step="0.01" className="w-20 bg-white p-2 rounded-xl text-xs font-bold outline-none border border-transparent focus:border-indigo-500" placeholder="0.00" required />
+              <button className="bg-slate-900 text-white p-2 rounded-xl hover:bg-black transition-colors"><Plus size={16}/></button>
             </form>
           )}
         </div>
       </main>
 
-      <footer className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-lg bg-white/90 backdrop-blur-xl border border-white shadow-2xl rounded-full p-4 flex justify-between items-center z-50">
-        <p className="text-xs font-black text-slate-400 uppercase ml-4">Weekly Sync Active</p>
+      <footer className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[95%] max-w-2xl bg-white/90 backdrop-blur-xl border border-white shadow-2xl rounded-full p-2 flex justify-between items-center z-50">
         <button 
-          onClick={() => { if(confirm("Finalize week?")) updateCloudData({ status: 'submitted' })}}
-          disabled={isSubmitted}
-          className={`px-8 py-3 rounded-full font-black text-xs uppercase tracking-widest ${isSubmitted ? 'bg-slate-100 text-slate-400' : 'bg-indigo-600 text-white'}`}
+          onClick={exportToCSV}
+          className="flex items-center gap-2 px-6 py-3 rounded-full font-black text-[10px] uppercase tracking-widest text-slate-600 hover:bg-slate-100 transition-all border border-slate-100"
         >
-          {isSubmitted ? 'Locked' : 'Lock Week'}
+          <Download size={14}/> Export CSV
         </button>
+        
+        <div className="flex items-center gap-2 mr-2">
+          <button 
+            onClick={() => { if(confirm("Finalize this week? This will lock all entries.")) updateCloudData({ status: 'submitted' })}}
+            disabled={isSubmitted}
+            className={`px-8 py-3 rounded-full font-black text-xs uppercase tracking-widest transition-all ${isSubmitted ? 'bg-slate-100 text-slate-400' : 'bg-indigo-600 text-white shadow-lg shadow-indigo-200'}`}
+          >
+            {isSubmitted ? 'Report Locked' : 'Lock Week'}
+          </button>
+        </div>
       </footer>
     </div>
   );

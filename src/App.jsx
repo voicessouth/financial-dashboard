@@ -104,18 +104,22 @@ export default function App() {
         const qSnap = await getDocs(reportsRef);
         
         if (!qSnap.empty) {
-          // Sort keys to find the most recent one with data
-          const dates = qSnap.docs.map(doc => doc.id);
-          dates.sort((a, b) => {
-            const [am, ad, ay] = a.split('-').map(Number);
-            const [bm, bd, by] = b.split('-').map(Number);
-            return new Date(2000 + by, bm - 1, bd) - new Date(2000 + ay, am - 1, ad);
+          // Map document IDs to Date objects for accurate sorting
+          const dateEntries = qSnap.docs.map(doc => {
+            const [m, d, y] = doc.id.split('-').map(Number);
+            return { id: doc.id, date: new Date(2000 + y, m - 1, d) };
           });
-          setSelectedSheetDate(dates[0]);
+
+          // Sort so the most recent date with data is first
+          dateEntries.sort((a, b) => b.date - a.date);
+          
+          setSelectedSheetDate(dateEntries[0].id);
         } else {
+          // Fallback to the natural current week if no data exists anywhere
           setSelectedSheetDate(getWorksheetDate(new Date()));
         }
       } catch (e) {
+        console.error("Discovery error:", e);
         setSelectedSheetDate(getWorksheetDate(new Date()));
       } finally {
         setLoading(false);

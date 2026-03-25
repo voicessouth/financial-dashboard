@@ -5,11 +5,7 @@ import {
   doc, 
   setDoc, 
   onSnapshot,
-  collection,
-  getDocs,
-  getDoc,
-  query,
-  limit
+  getDoc
 } from 'firebase/firestore';
 import { 
   getAuth, 
@@ -23,16 +19,14 @@ import {
   Plus,
   ChevronLeft,
   ChevronRight,
-  History,
   RefreshCw,
-  AlertCircle,
-  Database,
-  Lock,
   Search,
-  ShieldAlert,
+  Lock,
   Calendar,
   BarChart3,
-  ArrowRightLeft
+  CheckCircle2,
+  XCircle,
+  Clock
 } from 'lucide-react';
 
 // --- FIREBASE CONFIGURATION ---
@@ -79,109 +73,101 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loginError, setLoginError] = useState('');
   const [selectedSheetDate, setSelectedSheetDate] = useState(getReportingFriday(new Date()));
-  const [viewMode, setViewMode] = useState('weekly'); // 'weekly', 'sunday', 'tuesday', 'monthly'
+  const [viewMode, setViewMode] = useState('Sun'); // 'Sun', 'Tue', 'End of Week', 'End of Month'
   
   const [revenueData, setRevenueData] = useState({});
   const [expenses, setExpenses] = useState([]);
   const [manualStartingBalance, setManualStartingBalance] = useState(0);
   const [isSubmitted, setIsSubmitted] = useState(false);
   
-  // Recovery & Debug States
   const [isScanning, setIsScanning] = useState(false);
   const [foundDates, setFoundDates] = useState([]);
   const [showScanner, setShowScanner] = useState(false);
   const [debugLog, setDebugLog] = useState([]);
 
-  const addLog = (msg) => setDebugLog(prev => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev].slice(0, 50));
+  const addLog = (msg) => setDebugLog(prev => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev].slice(0, 30));
 
   // 1. AUTH INITIALIZATION
   useEffect(() => {
     const initAuth = async () => {
       try {
-        addLog("Establishing Secure Tunnel...");
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
           await signInWithCustomToken(auth, __initial_auth_token);
         } else {
           await signInAnonymously(auth);
         }
-      } catch (err) { 
-        addLog("AUTH_FAILURE: Check API Key / Auth Config."); 
-      }
+      } catch (err) { addLog("AUTH_ERR: Check Connection"); }
     };
     initAuth();
     const unsubscribe = onAuthStateChanged(auth, (u) => {
-        if (u) {
-            setUser(u);
-            setAuthReady(true);
-            addLog(`IDENTITY VERIFIED: ${u.uid.slice(0,8)}`);
-        }
+        if (u) { setUser(u); setAuthReady(true); addLog("ACCESS_TUNNEL_OPEN"); }
     });
     return () => unsubscribe();
   }, []);
 
-  // 2. Real-time Sync
+  // 2. REAL-TIME DATA SYNC
   useEffect(() => {
     if (!authReady || !isAuthenticated || !selectedSheetDate) return;
     
-    // We use a specific collection path based on the viewMode to keep data segregated if needed, 
-    // but usually, we just filter the main report by date-types.
-    // For this fix, we stick to 'church_reports' but ensure we handle the object correctly.
-    const docPath = doc(db, 'church_reports', selectedSheetDate);
+    // Normalize viewMode for DB paths but keep UI clean
+    const dbViewMode = viewMode.replace(/\s+/g, '_');
+    const docId = `${selectedSheetDate}_${dbViewMode}`;
+    const docPath = doc(db, 'church_reports', docId);
     
+    addLog(`SYNCING: ${docId}...`);
+
     const unsubscribe = onSnapshot(docPath, (snap) => {
       if (snap.exists()) {
         const data = snap.data();
-        // FIX: Ensure we spread existing revenue to avoid losing keys, and handle potential nulls
-        setRevenueData(data.revenue || {});
-        setExpenses(data.expenses || []);
+        // Critical: Spread into new objects to ensure React detects the change
+        const incomingRev = data.revenue || {};
+        setRevenueData({ ...incomingRev });
+        setExpenses([...(data.expenses || [])]);
         setManualStartingBalance(data.startingBalance || 0);
         setIsSubmitted(data.status === 'submitted');
-        addLog(`SYNCED: ${selectedSheetDate} (${Object.keys(data.revenue || {}).length} income fields)`);
+        
+        const count = Object.keys(incomingRev).filter(k => parseFloat(incomingRev[k]) > 0).length;
+        addLog(`POPULATED: ${docId} (${count} income fields)`);
       } else {
-        setRevenueData({}); setExpenses([]); setManualStartingBalance(0); setIsSubmitted(false);
-        addLog(`BLANK_RECORD: Initializing ${selectedSheetDate}`);
+        // Reset for new records
+        setRevenueData({});
+        setExpenses([]);
+        setManualStartingBalance(0);
+        setIsSubmitted(false);
+        addLog(`CLEARED: Ready for ${docId}`);
       }
-    }, (err) => {
-        addLog(`READ_DENIED: ${err.message}`);
-    });
+    }, (err) => addLog(`SYNC_ERROR: ${err.message}`));
     
     return () => unsubscribe();
   }, [authReady, isAuthenticated, selectedSheetDate, viewMode]);
 
-  // 3. FORCE PROBE
+  // 3. HISTORY SCANNER
   const performRecoveryScan = async () => {
-    if (!authReady) return addLog("SCAN_BLOCKED: Auth Not Ready");
-    
     setIsScanning(true);
-    addLog("INITIATING FORCE PROBE: Testing last 12 Fridays...");
-    
+    addLog("SCANNING_ARCHIVES...");
     try {
       const results = [];
       const now = new Date();
-      
-      for (let i = 0; i < 12; i++) {
+      // Scan last 10 weeks
+      for (let i = 0; i < 10; i++) {
         const testDate = new Date();
         testDate.setDate(now.getDate() - (i * 7));
         const dateStr = getReportingFriday(testDate);
         
-        const docRef = doc(db, 'church_reports', dateStr);
-        const snap = await getDoc(docRef);
-        
-        if (snap.exists()) {
-            const data = snap.data();
-            const revTotal = Object.values(data.revenue || {}).reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
-            results.push({ id: snap.id, status: data.status || 'draft', revTotal });
+        for (const type of ['Sun', 'Tue', 'End_of_Week', 'End_of_Month']) {
+            const id = `${dateStr}_${type}`;
+            const snap = await getDoc(doc(db, 'church_reports', id));
+            if (snap.exists()) {
+                const d = snap.data();
+                const total = Object.values(d.revenue || {}).reduce((s, v) => s + (parseFloat(v) || 0), 0);
+                results.push({ id: dateStr, type: type.replace(/_/g, ' '), total, docId: id });
+            }
         }
       }
-
       setFoundDates(results);
       setShowScanner(true);
-      addLog(`RECOVERY FINISHED: Found ${results.length} records.`);
-    } catch (e) {
-      addLog(`PROBE_FAILED: ${e.message}`);
-    } finally {
-      setIsScanning(false);
-    }
+      addLog(`FOUND ${results.length} RECENT RECORDS`);
+    } catch (e) { addLog("SCAN_FAILED"); } finally { setIsScanning(false); }
   };
 
   const currentTotals = useMemo(() => {
@@ -196,83 +182,77 @@ export default function App() {
     const data = new FormData(e.target);
     if (data.get('loginId') === ADMIN_CREDENTIALS.loginId && data.get('password') === ADMIN_CREDENTIALS.password) {
       setIsAuthenticated(true);
-      addLog("ADMIN_ACCESS_GRANTED");
-    } else {
-      setLoginError('Invalid Login/Password');
-    }
+    } else { setLoginError('Invalid Credentials'); }
   };
 
   if (!isAuthenticated) return (
-    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6">
-      <div className="w-full max-w-md bg-white rounded-[3rem] p-12 shadow-2xl">
-        <div className="mb-8 text-center">
-            <div className="bg-indigo-600 w-16 h-16 rounded-3xl flex items-center justify-center text-white mx-auto mb-4"><Lock size={32}/></div>
-            <h1 className="text-2xl font-black text-slate-800 uppercase tracking-tighter">Finance Vault</h1>
-            <p className="text-slate-400 text-[10px] font-bold uppercase mt-1">Voices of Faith South</p>
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
+      <div className="w-full max-w-md bg-white rounded-[2.5rem] p-10 shadow-2xl">
+        <div className="text-center mb-10">
+            <div className="bg-indigo-600 w-14 h-14 rounded-2xl flex items-center justify-center text-white mx-auto mb-4"><Lock size={28}/></div>
+            <h1 className="text-xl font-black text-slate-900 uppercase tracking-tighter">Voices South Vault</h1>
         </div>
         <form onSubmit={handleLogin} className="space-y-4">
-          <input name="loginId" type="text" placeholder="Admin ID" required className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none" />
-          <input name="password" type="password" placeholder="Password" required className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none" />
+          <input name="loginId" type="text" placeholder="Admin ID" required className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-xl outline-none" />
+          <input name="password" type="password" placeholder="Password" required className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-xl outline-none" />
           {loginError && <p className="text-rose-500 text-[10px] font-black uppercase text-center">{loginError}</p>}
-          <button type="submit" className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black uppercase tracking-widest hover:bg-indigo-600 transition-all">Sign In</button>
+          <button type="submit" className="w-full bg-slate-900 text-white py-4 rounded-xl font-black uppercase tracking-widest hover:bg-indigo-600 transition-all">Unlock Dashboard</button>
         </form>
       </div>
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4 pb-48 font-sans">
-        {/* TOP NAVIGATION BAR: restored Sunday, Tuesday, End of Week, End of Month */}
-        <div className="max-w-6xl mx-auto mb-6 flex flex-wrap gap-2 justify-center">
-            {[
-                { id: 'sunday', label: 'Sunday Service', icon: <Calendar size={14}/> },
-                { id: 'tuesday', label: 'Tuesday Study', icon: <Calendar size={14}/> },
-                { id: 'weekly', label: 'Full Week', icon: <BarChart3 size={14}/> },
-                { id: 'monthly', label: 'Monthly Total', icon: <History size={14}/> }
-            ].map((mode) => (
-                <button 
-                    key={mode.id}
-                    onClick={() => setViewMode(mode.id)}
-                    className={`px-5 py-2.5 rounded-full text-[11px] font-black uppercase tracking-wider flex items-center gap-2 transition-all ${viewMode === mode.id ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white text-slate-400 border border-slate-200 hover:border-indigo-300'}`}
-                >
-                    {mode.icon} {mode.label}
-                </button>
-            ))}
+    <div className="min-h-screen bg-slate-50 pb-40">
+        {/* VIEW SELECTOR: Sun, Tue, End of Week, End of Month */}
+        <div className="bg-white border-b border-slate-200 sticky top-0 z-40 px-4 py-3">
+            <div className="max-w-6xl mx-auto flex flex-wrap gap-2 justify-center md:justify-start">
+                {[
+                    { id: 'Sun', label: 'Sun', icon: <Calendar size={14}/> },
+                    { id: 'Tue', label: 'Tue', icon: <Clock size={14}/> },
+                    { id: 'End of Week', label: 'End of week', icon: <BarChart3 size={14}/> },
+                    { id: 'End of Month', label: 'End of Month', icon: <History size={14}/> }
+                ].map((m) => (
+                    <button 
+                        key={m.id}
+                        onClick={() => setViewMode(m.id)}
+                        className={`px-5 py-2.5 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-2 transition-all ${viewMode === m.id ? 'bg-indigo-600 text-white shadow-md scale-105' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                    >
+                        {m.icon} {m.label}
+                    </button>
+                ))}
+            </div>
         </div>
 
-        <header className="max-w-6xl mx-auto mb-8 flex flex-wrap gap-4 items-stretch">
-            <div className="flex-1 min-w-[300px] bg-white p-6 rounded-[2rem] shadow-sm border border-slate-200 flex justify-between items-center">
+        <header className="max-w-6xl mx-auto mt-8 mb-6 px-4 flex flex-wrap gap-4 items-center">
+            <div className="flex-1 bg-white p-4 rounded-3xl shadow-sm border border-slate-200 flex justify-between items-center min-w-[300px]">
                 <button onClick={() => {
                      const [m, d, y] = selectedSheetDate.split('-').map(Number);
                      const date = new Date(2000 + y, m - 1, d);
                      date.setDate(date.getDate() - 7);
                      setSelectedSheetDate(formatDate(date));
-                }} className="p-3 hover:bg-slate-100 rounded-2xl text-slate-400"><ChevronLeft/></button>
+                }} className="p-2 hover:bg-slate-50 rounded-xl text-slate-400"><ChevronLeft/></button>
                 <div className="text-center">
-                    <h2 className="text-xl font-black text-slate-800 tracking-tight">Week of {selectedSheetDate}</h2>
-                    <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">{viewMode} View</p>
+                    <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest leading-none mb-1">{viewMode}</p>
+                    <h2 className="text-lg font-black text-slate-800">Report: {selectedSheetDate}</h2>
                 </div>
                 <button onClick={() => {
                      const [m, d, y] = selectedSheetDate.split('-').map(Number);
                      const date = new Date(2000 + y, m - 1, d);
                      date.setDate(date.getDate() + 7);
                      setSelectedSheetDate(formatDate(date));
-                }} className="p-3 hover:bg-slate-100 rounded-2xl text-slate-400"><ChevronRight/></button>
+                }} className="p-2 hover:bg-slate-50 rounded-xl text-slate-400"><ChevronRight/></button>
             </div>
             
-            <button 
-                onClick={performRecoveryScan}
-                disabled={isScanning || !authReady}
-                className="bg-slate-900 px-8 rounded-[2rem] font-black uppercase text-[11px] text-white hover:bg-indigo-600 disabled:bg-slate-400 transition-all flex items-center gap-3 shadow-lg"
-            >
+            <button onClick={performRecoveryScan} disabled={isScanning} className="bg-slate-900 text-white px-6 py-4 rounded-3xl font-black uppercase text-[10px] tracking-widest flex items-center gap-3 hover:bg-indigo-600 transition-all shadow-lg">
                 {isScanning ? <RefreshCw className="animate-spin" size={16}/> : <Search size={16}/>}
                 History & Recovery
             </button>
         </header>
 
-        <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-            <div className="bg-white p-8 rounded-[2rem] border border-slate-200">
-                <p className="text-[10px] font-black text-slate-400 uppercase mb-3">Starting Balance</p>
+        <div className="max-w-6xl mx-auto px-4 grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+            <div className="bg-white p-6 rounded-[2rem] border border-slate-200">
+                <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Starting Balance</p>
                 <div className="flex items-center gap-1">
                     <span className="text-slate-300 font-bold">$</span>
                     <input 
@@ -282,32 +262,34 @@ export default function App() {
                         onChange={(e) => {
                             const val = parseFloat(e.target.value) || 0;
                             setManualStartingBalance(val);
-                            if (authReady) setDoc(doc(db, 'church_reports', selectedSheetDate), { startingBalance: val }, { merge: true });
+                            const dbMode = viewMode.replace(/\s+/g, '_');
+                            setDoc(doc(db, 'church_reports', `${selectedSheetDate}_${dbMode}`), { startingBalance: val }, { merge: true });
                         }} 
                         className="text-2xl font-black text-slate-800 outline-none w-full bg-transparent border-b-2 border-slate-100 focus:border-indigo-500" 
+                        placeholder="0.00"
                     />
                 </div>
             </div>
-            <div className="bg-white p-8 rounded-[2rem] border border-slate-200">
-                <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Total Revenue</p>
+            <div className="bg-white p-6 rounded-[2rem] border border-slate-200">
+                <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Inflow</p>
                 <p className="text-3xl font-black text-emerald-600">${currentTotals.rev.toLocaleString()}</p>
             </div>
-            <div className="bg-white p-8 rounded-[2rem] border border-slate-200">
-                <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Total Expenses</p>
-                <p className="text-3xl font-black text-rose-600">${currentTotals.exp.toLocaleString()}</p>
+            <div className="bg-white p-6 rounded-[2rem] border border-slate-200">
+                <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Outflow</p>
+                <p className="text-3xl font-black text-rose-500">${currentTotals.exp.toLocaleString()}</p>
             </div>
-            <div className="bg-indigo-600 p-8 rounded-[2rem] text-white shadow-xl">
+            <div className="bg-indigo-600 p-6 rounded-[2rem] text-white shadow-xl">
                 <p className="text-[10px] font-black text-indigo-200 uppercase mb-1">Ending Balance</p>
                 <p className="text-3xl font-black">${currentTotals.end.toLocaleString()}</p>
             </div>
         </div>
 
-        <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
-            <div className="bg-white p-8 rounded-[3rem] shadow-sm border border-slate-200">
-                <h3 className="font-black text-slate-800 uppercase text-xs tracking-widest mb-6 flex items-center gap-2"><TrendingUp className="text-emerald-500" size={18}/> Revenue Details</h3>
-                <div className="space-y-4">
+        <div className="max-w-6xl mx-auto px-4 grid grid-cols-1 md:grid-cols-2 gap-8">
+            <section className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-200">
+                <h3 className="font-black text-slate-800 uppercase text-xs tracking-widest mb-6 flex items-center gap-2 text-emerald-600"><TrendingUp size={18}/> Income Streams</h3>
+                <div className="grid grid-cols-1 gap-4">
                     {REVENUE_CATEGORIES.map(cat => (
-                        <div key={cat} className="group">
+                        <div key={cat}>
                             <label className="text-[10px] font-black text-slate-400 uppercase ml-1 mb-1 block">{cat}</label>
                             <div className="relative">
                                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 font-bold">$</span>
@@ -316,34 +298,36 @@ export default function App() {
                                     disabled={isSubmitted}
                                     value={revenueData[cat] || ''}
                                     onChange={(e) => {
-                                        const updated = { ...revenueData, [cat]: e.target.value };
+                                        const val = e.target.value;
+                                        const updated = { ...revenueData, [cat]: val };
                                         setRevenueData(updated);
-                                        // Merge ensures we don't wipe out existing fields
-                                        if (authReady) setDoc(doc(db, 'church_reports', selectedSheetDate), { revenue: updated }, { merge: true });
+                                        const dbMode = viewMode.replace(/\s+/g, '_');
+                                        setDoc(doc(db, 'church_reports', `${selectedSheetDate}_${dbMode}`), { revenue: updated }, { merge: true });
                                     }}
-                                    className="w-full pl-8 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-2 ring-indigo-500/20"
+                                    className="w-full pl-8 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-xl font-bold outline-none focus:ring-2 ring-indigo-500/20"
                                     placeholder="0.00"
                                 />
                             </div>
                         </div>
                     ))}
                 </div>
-            </div>
+            </section>
 
-            <div className="bg-white p-8 rounded-[3rem] shadow-sm border border-slate-200 flex flex-col">
-                <h3 className="font-black text-slate-800 uppercase text-xs tracking-widest mb-6 flex items-center gap-2"><Wallet className="text-rose-500" size={18}/> Expense Tracking</h3>
-                <div className="flex-1 overflow-y-auto max-h-[500px] mb-6 space-y-3 pr-2 custom-scrollbar">
-                    {expenses.length === 0 ? <div className="h-40 flex items-center justify-center border-2 border-dashed border-slate-100 rounded-[2rem] text-slate-300 font-bold italic text-sm">No entries</div> : (
+            <section className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-200 flex flex-col h-full min-h-[600px]">
+                <h3 className="font-black text-slate-800 uppercase text-xs tracking-widest mb-6 flex items-center gap-2 text-rose-500"><Wallet size={18}/> Expense Log</h3>
+                <div className="flex-1 overflow-y-auto mb-6 space-y-3 custom-scrollbar pr-2">
+                    {expenses.length === 0 ? <div className="h-40 flex items-center justify-center text-slate-300 font-bold italic text-sm">No recorded expenses</div> : (
                         expenses.map((exp, idx) => (
-                            <div key={idx} className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex justify-between items-center">
+                            <div key={idx} className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex justify-between items-center group">
                                 <div><p className="font-bold text-slate-700 text-sm">{exp.category}</p><p className="text-[10px] text-slate-400 font-black uppercase">{exp.date}</p></div>
                                 <div className="flex items-center gap-4"><p className="font-black text-rose-500">-${parseFloat(exp.amount).toFixed(2)}</p>
                                 {!isSubmitted && (
                                     <button onClick={() => {
                                         const updated = expenses.filter((_, i) => i !== idx);
                                         setExpenses(updated);
-                                        setDoc(doc(db, 'church_reports', selectedSheetDate), { expenses: updated }, { merge: true });
-                                    }} className="text-slate-300 hover:text-rose-500"><Plus className="rotate-45" size={16}/></button>
+                                        const dbMode = viewMode.replace(/\s+/g, '_');
+                                        setDoc(doc(db, 'church_reports', `${selectedSheetDate}_${dbMode}`), { expenses: updated }, { merge: true });
+                                    }} className="text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100"><Plus className="rotate-45" size={16}/></button>
                                 )}</div>
                             </div>
                         ))
@@ -356,99 +340,77 @@ export default function App() {
                         const newExp = { category: data.get('cat'), amount: data.get('amt'), date: new Date().toLocaleDateString() };
                         const updated = [...expenses, newExp];
                         setExpenses(updated);
-                        if (authReady) setDoc(doc(db, 'church_reports', selectedSheetDate), { expenses: updated }, { merge: true });
+                        const dbMode = viewMode.replace(/\s+/g, '_');
+                        setDoc(doc(db, 'church_reports', `${selectedSheetDate}_${dbMode}`), { expenses: updated }, { merge: true });
                         e.target.reset();
-                    }} className="space-y-3 p-4 bg-slate-50 rounded-[2rem] border border-slate-100">
-                        <select name="cat" required className="w-full p-3 bg-white rounded-xl border border-slate-200 text-sm font-bold">
+                    }} className="bg-slate-900 p-5 rounded-3xl space-y-3 shadow-xl">
+                        <select name="cat" required className="w-full p-3 bg-slate-800 text-white rounded-xl border-none text-sm font-bold outline-none">
                             {EXPENSE_CATEGORIES.map(c => <option key={c}>{c}</option>)}
                         </select>
                         <div className="flex gap-2">
-                            <input name="amt" type="number" step="0.01" required placeholder="Amount" className="flex-1 p-3 bg-white rounded-xl border border-slate-200 text-sm font-bold" />
-                            <button type="submit" className="bg-slate-900 text-white p-3 rounded-xl hover:bg-indigo-600 transition-all"><Plus/></button>
+                            <input name="amt" type="number" step="0.01" required placeholder="Amount" className="flex-1 p-3 bg-slate-800 text-white rounded-xl border-none text-sm font-bold outline-none" />
+                            <button type="submit" className="bg-indigo-600 text-white p-3 rounded-xl hover:bg-indigo-500 transition-all"><Plus/></button>
                         </div>
                     </form>
                 )}
-            </div>
+            </section>
         </div>
 
-        {/* LOG PANEL */}
-        <div className="max-w-6xl mx-auto mt-12 bg-slate-900 rounded-[3rem] p-10 shadow-2xl overflow-hidden relative">
-            <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 blur-[100px]"></div>
-            <div className="flex items-center justify-between mb-6 relative">
-                <div className="flex items-center gap-3">
-                    <Database className="text-indigo-400" size={20}/>
-                    <h4 className="text-indigo-100 font-black uppercase text-xs tracking-widest">System Diagnostics</h4>
-                </div>
-                <div className="text-[10px] font-black text-indigo-400 bg-indigo-400/10 px-3 py-1 rounded-full border border-indigo-400/20 uppercase">Data Sync Active</div>
-            </div>
-            <div className="bg-black/60 p-6 rounded-2xl font-mono text-[11px] text-emerald-400 space-y-1 h-48 overflow-y-auto custom-scrollbar border border-white/5 backdrop-blur-md">
-                {debugLog.map((log, i) => <div key={i} className="opacity-80 hover:opacity-100 transition-opacity">
-                    {log.includes("READ_DENIED") ? <span className="text-rose-400">{log}</span> : log}
-                </div>)}
+        {/* DIAGNOSTIC PANEL */}
+        <div className="max-w-6xl mx-auto mt-12 px-4">
+            <div className="bg-slate-900 rounded-[2rem] p-6 font-mono text-[10px] text-indigo-300 h-40 overflow-y-auto custom-scrollbar border border-indigo-500/20">
+                {debugLog.map((log, i) => <div key={i} className="mb-1">{log}</div>)}
                 <div className="animate-pulse">_</div>
             </div>
         </div>
 
-        {/* RECOVERY MODAL */}
+        {/* MODAL: RECOVERY */}
         {showScanner && (
-            <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-xl z-[100] flex items-center justify-center p-6">
-                <div className="bg-white w-full max-w-2xl rounded-[3rem] p-12 shadow-2xl max-h-[85vh] flex flex-col scale-in-center">
-                    <div className="flex justify-between items-start mb-8">
-                        <div>
-                            <h3 className="text-3xl font-black uppercase text-slate-800 tracking-tighter">Database Archives</h3>
-                            <p className="text-[10px] font-bold text-slate-400 uppercase mt-1">Previous Reports Recovered</p>
-                        </div>
-                        <button onClick={() => setShowScanner(false)} className="bg-slate-100 p-3 rounded-2xl hover:text-rose-500 transition-all"><Plus className="rotate-45"/></button>
+            <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-6">
+                <div className="bg-white w-full max-w-xl rounded-[2rem] p-8 shadow-2xl max-h-[80vh] flex flex-col">
+                    <div className="flex justify-between items-center mb-6">
+                        <h3 className="text-xl font-black text-slate-900 uppercase">Database Archive</h3>
+                        <button onClick={() => setShowScanner(false)} className="text-slate-400 hover:text-rose-500"><XCircle size={24}/></button>
                     </div>
-                    <div className="overflow-y-auto flex-1 space-y-3 pr-4 custom-scrollbar">
-                        {foundDates.length === 0 ? (
-                            <div className="text-center py-20 bg-slate-50 rounded-[2rem] border-2 border-dashed border-slate-200">
-                                <ShieldAlert className="mx-auto text-rose-500 mb-4" size={48}/>
-                                <p className="text-slate-800 font-black uppercase text-sm">No Records Found</p>
-                            </div>
-                        ) : (
-                            foundDates.map((item, i) => (
-                                <button key={i} onClick={() => { setSelectedSheetDate(item.id); setShowScanner(false); }} className="w-full text-left p-6 bg-slate-50 hover:bg-indigo-50 rounded-3xl border border-slate-100 flex justify-between items-center transition-all group">
-                                    <div>
-                                        <span className="text-xl font-black text-slate-800 tracking-tight">Week of {item.id}</span>
-                                        <div className="flex gap-3 mt-1 items-center">
-                                            <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md text-white ${item.status === 'submitted' ? 'bg-indigo-600' : 'bg-emerald-500'}`}>{item.status}</span>
-                                            <span className="text-[10px] font-bold text-slate-400 tracking-wider">REV: ${item.revTotal.toLocaleString()}</span>
-                                        </div>
-                                    </div>
-                                    <span className="text-[10px] font-black text-indigo-600 uppercase group-hover:translate-x-2 transition-transform">Load Sheet →</span>
-                                </button>
-                            ))
-                        )}
+                    <div className="overflow-y-auto flex-1 space-y-2 pr-2 custom-scrollbar">
+                        {foundDates.map((item, i) => (
+                            <button key={i} onClick={() => { setSelectedSheetDate(item.id); setViewMode(item.type); setShowScanner(false); }} className="w-full flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-2xl hover:bg-indigo-50 transition-all group">
+                                <div>
+                                    <p className="font-black text-slate-800 tracking-tight">Week of {item.id}</p>
+                                    <p className="text-[9px] font-bold text-indigo-600 uppercase">{item.type}</p>
+                                </div>
+                                <div className="text-right">
+                                    <p className="text-sm font-black text-emerald-600">${item.total.toLocaleString()}</p>
+                                    <p className="text-[8px] font-bold text-slate-400 uppercase group-hover:text-indigo-600 transition-colors">Load Data →</p>
+                                </div>
+                            </button>
+                        ))}
                     </div>
                 </div>
             </div>
         )}
 
-        <footer className="fixed bottom-8 left-1/2 -translate-x-1/2 w-full max-w-lg px-6 z-50">
-            <div className="bg-white/90 backdrop-blur-2xl border border-white/50 shadow-2xl rounded-full p-3 flex justify-between items-center ring-1 ring-slate-900/5">
-                <button onClick={() => {/* ... export ... */}} className="px-8 py-4 rounded-full text-[11px] font-black uppercase text-slate-500 hover:bg-slate-50">Export PDF</button>
+        <footer className="fixed bottom-6 left-1/2 -translate-x-1/2 w-full max-w-md px-6 z-40">
+            <div className="bg-white/80 backdrop-blur-xl border border-white/50 shadow-2xl rounded-full p-2 flex gap-2">
                 <button 
                     onClick={() => {
-                        if(window.confirm("Finalize this weekly report? It will be locked for auditing.")) {
-                            setDoc(doc(db, 'church_reports', selectedSheetDate), { status: 'submitted' }, { merge: true });
-                            addLog(`LOCKED_REPORT: ${selectedSheetDate}`);
+                        if(window.confirm("Submit final audit? This locks data.")) {
+                            const dbMode = viewMode.replace(/\s+/g, '_');
+                            setDoc(doc(db, 'church_reports', `${selectedSheetDate}_${dbMode}`), { status: 'submitted' }, { merge: true });
                         }
                     }} 
-                    disabled={isSubmitted || !authReady} 
-                    className={`px-12 py-4 rounded-full text-[11px] font-black uppercase tracking-widest transition-all ${isSubmitted ? 'bg-slate-100 text-slate-400' : 'bg-indigo-600 text-white shadow-xl'}`}
+                    disabled={isSubmitted} 
+                    className={`flex-1 py-4 rounded-full text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${isSubmitted ? 'bg-slate-100 text-slate-400' : 'bg-indigo-600 text-white shadow-lg'}`}
                 >
-                    {isSubmitted ? 'Sheet Locked' : 'Finalize Records'}
+                    {isSubmitted ? <CheckCircle2 size={14}/> : null}
+                    {isSubmitted ? 'Sheet Locked' : 'Finalize & Close'}
                 </button>
             </div>
         </footer>
 
         <style>{`
-            .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-            .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
-            @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
-            @keyframes scale-in-center { 0% { transform: scale(0.9); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
-            .scale-in-center { animation: scale-in-center 0.4s cubic-bezier(0.390, 0.575, 0.565, 1.000) both; }
+            .custom-scrollbar::-webkit-scrollbar { width: 5px; }
+            .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
         `}</style>
     </div>
   );

@@ -30,11 +30,12 @@ import {
 } from 'lucide-react';
 
 // --- FIREBASE CONFIGURATION ---
-const firebaseConfig = JSON.parse(__firebase_config);
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'church-financial-dashboard';
+  apiKey: "AIzaSyDb6oFZEStklFT_Dt2riDbQC_IJPHcT304",
+  authDomain: "church-finance-dashboard-40dca.firebaseapp.com",
+  projectId: "church-finance-dashboard-40dca",
+  storageBucket: "church-finance-dashboard-40dca.firebasestorage.app",
+  messagingSenderId: "480863076081",
+  appId: "1:480863076081:web:dd01f7270a7cd158f93350";
 
 // --- APP CONSTANTS ---
 const INCOME_DAYS = ['Sunday', 'Tuesday', 'End of Week', 'End of Month'];
@@ -48,7 +49,7 @@ const EXPENSE_CATEGORIES = [
   'Team Pest USA', 'First Citizens Bank', 'Other'
 ];
 
-const ADMIN_CREDENTIALS = { loginId: "admin", password: "password123" };
+const ADMIN_CREDENTIALS = { loginId: "voicessouth", password: "3894South" };
 
 export default function App() {
   const [user, setUser] = useState(null);

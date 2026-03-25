@@ -26,7 +26,8 @@ import {
   BarChart3,
   CheckCircle2,
   XCircle,
-  Clock
+  Clock,
+  History
 } from 'lucide-react';
 
 // --- FIREBASE CONFIGURATION ---
@@ -73,7 +74,7 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loginError, setLoginError] = useState('');
   const [selectedSheetDate, setSelectedSheetDate] = useState(getReportingFriday(new Date()));
-  const [viewMode, setViewMode] = useState('Sun'); // 'Sun', 'Tue', 'End of Week', 'End of Month'
+  const [viewMode, setViewMode] = useState('Sun'); 
   
   const [revenueData, setRevenueData] = useState({});
   const [expenses, setExpenses] = useState([]);
@@ -109,7 +110,12 @@ export default function App() {
   useEffect(() => {
     if (!authReady || !isAuthenticated || !selectedSheetDate) return;
     
-    // Normalize viewMode for DB paths but keep UI clean
+    // Clear current state before loading new data to prevent UI "sticking"
+    setRevenueData({});
+    setExpenses([]);
+    setManualStartingBalance(0);
+    setIsSubmitted(false);
+
     const dbViewMode = viewMode.replace(/\s+/g, '_');
     const docId = `${selectedSheetDate}_${dbViewMode}`;
     const docPath = doc(db, 'church_reports', docId);
@@ -119,37 +125,27 @@ export default function App() {
     const unsubscribe = onSnapshot(docPath, (snap) => {
       if (snap.exists()) {
         const data = snap.data();
-        // Critical: Spread into new objects to ensure React detects the change
-        const incomingRev = data.revenue || {};
-        setRevenueData({ ...incomingRev });
+        setRevenueData({ ...(data.revenue || {}) });
         setExpenses([...(data.expenses || [])]);
         setManualStartingBalance(data.startingBalance || 0);
         setIsSubmitted(data.status === 'submitted');
-        
-        const count = Object.keys(incomingRev).filter(k => parseFloat(incomingRev[k]) > 0).length;
-        addLog(`POPULATED: ${docId} (${count} income fields)`);
+        addLog(`LOADED: ${docId}`);
       } else {
-        // Reset for new records
-        setRevenueData({});
-        setExpenses([]);
-        setManualStartingBalance(0);
-        setIsSubmitted(false);
-        addLog(`CLEARED: Ready for ${docId}`);
+        addLog(`EMPTY: ${docId} (Ready for entry)`);
       }
     }, (err) => addLog(`SYNC_ERROR: ${err.message}`));
     
     return () => unsubscribe();
   }, [authReady, isAuthenticated, selectedSheetDate, viewMode]);
 
-  // 3. HISTORY SCANNER
+  // 3. RECOVERY SCAN
   const performRecoveryScan = async () => {
     setIsScanning(true);
-    addLog("SCANNING_ARCHIVES...");
+    addLog("SCANNING...");
     try {
       const results = [];
       const now = new Date();
-      // Scan last 10 weeks
-      for (let i = 0; i < 10; i++) {
+      for (let i = 0; i < 8; i++) {
         const testDate = new Date();
         testDate.setDate(now.getDate() - (i * 7));
         const dateStr = getReportingFriday(testDate);
@@ -160,21 +156,21 @@ export default function App() {
             if (snap.exists()) {
                 const d = snap.data();
                 const total = Object.values(d.revenue || {}).reduce((s, v) => s + (parseFloat(v) || 0), 0);
-                results.push({ id: dateStr, type: type.replace(/_/g, ' '), total, docId: id });
+                results.push({ id: dateStr, type: type.replace(/_/g, ' '), total });
             }
         }
       }
       setFoundDates(results);
       setShowScanner(true);
-      addLog(`FOUND ${results.length} RECENT RECORDS`);
+      addLog(`FOUND ${results.length} ENTRIES`);
     } catch (e) { addLog("SCAN_FAILED"); } finally { setIsScanning(false); }
   };
 
-  const currentTotals = useMemo(() => {
+  const totals = useMemo(() => {
     const rev = Object.values(revenueData).reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
     const exp = expenses.reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
     const start = parseFloat(manualStartingBalance) || 0;
-    return { rev, exp, net: rev - exp, start, end: start + (rev - exp) };
+    return { rev, exp, start, end: start + (rev - exp) };
   }, [revenueData, expenses, manualStartingBalance]);
 
   const handleLogin = (e) => {
@@ -204,7 +200,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 pb-40">
-        {/* VIEW SELECTOR: Sun, Tue, End of Week, End of Month */}
         <div className="bg-white border-b border-slate-200 sticky top-0 z-40 px-4 py-3">
             <div className="max-w-6xl mx-auto flex flex-wrap gap-2 justify-center md:justify-start">
                 {[
@@ -216,7 +211,7 @@ export default function App() {
                     <button 
                         key={m.id}
                         onClick={() => setViewMode(m.id)}
-                        className={`px-5 py-2.5 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-2 transition-all ${viewMode === m.id ? 'bg-indigo-600 text-white shadow-md scale-105' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                        className={`px-5 py-2.5 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-2 transition-all ${viewMode === m.id ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
                     >
                         {m.icon} {m.label}
                     </button>
@@ -234,7 +229,7 @@ export default function App() {
                 }} className="p-2 hover:bg-slate-50 rounded-xl text-slate-400"><ChevronLeft/></button>
                 <div className="text-center">
                     <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest leading-none mb-1">{viewMode}</p>
-                    <h2 className="text-lg font-black text-slate-800">Report: {selectedSheetDate}</h2>
+                    <h2 className="text-lg font-black text-slate-800">{selectedSheetDate}</h2>
                 </div>
                 <button onClick={() => {
                      const [m, d, y] = selectedSheetDate.split('-').map(Number);
@@ -244,9 +239,9 @@ export default function App() {
                 }} className="p-2 hover:bg-slate-50 rounded-xl text-slate-400"><ChevronRight/></button>
             </div>
             
-            <button onClick={performRecoveryScan} disabled={isScanning} className="bg-slate-900 text-white px-6 py-4 rounded-3xl font-black uppercase text-[10px] tracking-widest flex items-center gap-3 hover:bg-indigo-600 transition-all shadow-lg">
+            <button onClick={performRecoveryScan} className="bg-slate-900 text-white px-6 py-4 rounded-3xl font-black uppercase text-[10px] tracking-widest flex items-center gap-3 hover:bg-indigo-600 transition-all shadow-lg">
                 {isScanning ? <RefreshCw className="animate-spin" size={16}/> : <Search size={16}/>}
-                History & Recovery
+                History
             </button>
         </header>
 
@@ -257,7 +252,7 @@ export default function App() {
                     <span className="text-slate-300 font-bold">$</span>
                     <input 
                         type="number" 
-                        value={manualStartingBalance} 
+                        value={manualStartingBalance || ''} 
                         disabled={isSubmitted} 
                         onChange={(e) => {
                             const val = parseFloat(e.target.value) || 0;
@@ -266,21 +261,20 @@ export default function App() {
                             setDoc(doc(db, 'church_reports', `${selectedSheetDate}_${dbMode}`), { startingBalance: val }, { merge: true });
                         }} 
                         className="text-2xl font-black text-slate-800 outline-none w-full bg-transparent border-b-2 border-slate-100 focus:border-indigo-500" 
-                        placeholder="0.00"
                     />
                 </div>
             </div>
             <div className="bg-white p-6 rounded-[2rem] border border-slate-200">
                 <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Inflow</p>
-                <p className="text-3xl font-black text-emerald-600">${currentTotals.rev.toLocaleString()}</p>
+                <p className="text-3xl font-black text-emerald-600">${totals.rev.toLocaleString()}</p>
             </div>
             <div className="bg-white p-6 rounded-[2rem] border border-slate-200">
                 <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Outflow</p>
-                <p className="text-3xl font-black text-rose-500">${currentTotals.exp.toLocaleString()}</p>
+                <p className="text-3xl font-black text-rose-500">${totals.exp.toLocaleString()}</p>
             </div>
             <div className="bg-indigo-600 p-6 rounded-[2rem] text-white shadow-xl">
                 <p className="text-[10px] font-black text-indigo-200 uppercase mb-1">Ending Balance</p>
-                <p className="text-3xl font-black">${currentTotals.end.toLocaleString()}</p>
+                <p className="text-3xl font-black">${totals.end.toLocaleString()}</p>
             </div>
         </div>
 
@@ -304,8 +298,7 @@ export default function App() {
                                         const dbMode = viewMode.replace(/\s+/g, '_');
                                         setDoc(doc(db, 'church_reports', `${selectedSheetDate}_${dbMode}`), { revenue: updated }, { merge: true });
                                     }}
-                                    className="w-full pl-8 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-xl font-bold outline-none focus:ring-2 ring-indigo-500/20"
-                                    placeholder="0.00"
+                                    className="w-full pl-8 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-xl font-bold outline-none"
                                 />
                             </div>
                         </div>
@@ -356,7 +349,6 @@ export default function App() {
             </section>
         </div>
 
-        {/* DIAGNOSTIC PANEL */}
         <div className="max-w-6xl mx-auto mt-12 px-4">
             <div className="bg-slate-900 rounded-[2rem] p-6 font-mono text-[10px] text-indigo-300 h-40 overflow-y-auto custom-scrollbar border border-indigo-500/20">
                 {debugLog.map((log, i) => <div key={i} className="mb-1">{log}</div>)}
@@ -364,12 +356,11 @@ export default function App() {
             </div>
         </div>
 
-        {/* MODAL: RECOVERY */}
         {showScanner && (
             <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-6">
                 <div className="bg-white w-full max-w-xl rounded-[2rem] p-8 shadow-2xl max-h-[80vh] flex flex-col">
                     <div className="flex justify-between items-center mb-6">
-                        <h3 className="text-xl font-black text-slate-900 uppercase">Database Archive</h3>
+                        <h3 className="text-xl font-black text-slate-900 uppercase tracking-tighter">Report Archive</h3>
                         <button onClick={() => setShowScanner(false)} className="text-slate-400 hover:text-rose-500"><XCircle size={24}/></button>
                     </div>
                     <div className="overflow-y-auto flex-1 space-y-2 pr-2 custom-scrollbar">
@@ -381,7 +372,7 @@ export default function App() {
                                 </div>
                                 <div className="text-right">
                                     <p className="text-sm font-black text-emerald-600">${item.total.toLocaleString()}</p>
-                                    <p className="text-[8px] font-bold text-slate-400 uppercase group-hover:text-indigo-600 transition-colors">Load Data →</p>
+                                    <p className="text-[8px] font-bold text-slate-400 uppercase">Load →</p>
                                 </div>
                             </button>
                         ))}

@@ -30,12 +30,13 @@ import {
 } from 'lucide-react';
 
 // --- FIREBASE CONFIGURATION ---
+const firebaseConfig = {
   apiKey: "AIzaSyDb6oFZEStklFT_Dt2riDbQC_IJPHcT304",
   authDomain: "church-finance-dashboard-40dca.firebaseapp.com",
   projectId: "church-finance-dashboard-40dca",
   storageBucket: "church-finance-dashboard-40dca.firebasestorage.app",
   messagingSenderId: "480863076081",
-  appId: "1:480863076081:web:dd01f7270a7cd158f93350";
+  appId: "1:480863076081:web:dd01f7270a7cd158f93350"
 
 // --- APP CONSTANTS ---
 const INCOME_DAYS = ['Sunday', 'Tuesday', 'End of Week', 'End of Month'];
@@ -95,28 +96,31 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // 2. Intelligent Initial Date Selection (Look for existing data first)
+  // 2. Data Discovery Logic (Finds your Jan/Feb data)
   useEffect(() => {
     if (!user || !isAuthenticated) return;
 
     const findLatestActiveDate = async () => {
       try {
-        const reportsRef = collection(db, 'artifacts', appId, 'public', 'data', 'reports');
+        // Updated collection path to match the rest of the app logic
+        const reportsRef = collection(db, 'artifacts', appId, 'public', 'data', 'church_reports');
         const qSnap = await getDocs(reportsRef);
         
         if (!qSnap.empty) {
-          // Map document IDs to Date objects for accurate sorting
           const dateEntries = qSnap.docs.map(doc => {
-            const [m, d, y] = doc.id.split('-').map(Number);
+            const parts = doc.id.split('-');
+            if (parts.length !== 3) return null;
+            const [m, d, y] = parts.map(Number);
             return { id: doc.id, date: new Date(2000 + y, m - 1, d) };
-          });
+          }).filter(entry => entry !== null);
 
-          // Sort so the most recent date with data is first
-          dateEntries.sort((a, b) => b.date - a.date);
-          
-          setSelectedSheetDate(dateEntries[0].id);
+          if (dateEntries.length > 0) {
+            dateEntries.sort((a, b) => b.date - a.date);
+            setSelectedSheetDate(dateEntries[0].id);
+          } else {
+            setSelectedSheetDate(getWorksheetDate(new Date()));
+          }
         } else {
-          // Fallback to the natural current week if no data exists anywhere
           setSelectedSheetDate(getWorksheetDate(new Date()));
         }
       } catch (e) {
@@ -130,17 +134,16 @@ export default function App() {
     findLatestActiveDate();
   }, [user, isAuthenticated]);
 
-  // 3. MAIN DATA SYNC: Resets state and listens to Firestore
+  // 3. MAIN DATA SYNC
   useEffect(() => {
     if (!user || !selectedSheetDate || !isAuthenticated) return;
 
-    // Reset local UI state to avoid seeing previous week's ghosts
     setRevenueData({});
     setExpenses([]);
     setManualStartingBalance(null);
     setIsSubmitted(false);
 
-    const docPath = doc(db, 'artifacts', appId, 'public', 'data', 'reports', selectedSheetDate);
+    const docPath = doc(db, 'artifacts', appId, 'public', 'data', 'church_reports', selectedSheetDate);
     
     const unsubscribe = onSnapshot(docPath, (docSnap) => {
       if (docSnap.exists()) {
@@ -150,7 +153,11 @@ export default function App() {
         setManualStartingBalance(data.startingBalance ?? null);
         setIsSubmitted(data.status === 'submitted');
       }
-    }, (err) => console.error("Snapshot Error:", err));
+    }, (err) => {
+        console.error("Snapshot Error:", err);
+        // If there's a permission error, we still want to stop the loading spinner
+        setLoading(false);
+    });
 
     return () => unsubscribe();
   }, [user, selectedSheetDate, isAuthenticated]);
@@ -164,7 +171,7 @@ export default function App() {
     prevDateObj.setDate(prevDateObj.getDate() - 7);
     const prevWeekKey = formatDate(prevDateObj);
 
-    const prevDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'reports', prevWeekKey);
+    const prevDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'church_reports', prevWeekKey);
     
     const unsubscribe = onSnapshot(prevDocRef, (snap) => {
       if (snap.exists()) {
@@ -214,7 +221,7 @@ export default function App() {
 
   const updateCloudData = async (updates) => {
     if (!user || !selectedSheetDate || isSubmitted || !isAuthenticated) return;
-    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'reports', selectedSheetDate);
+    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'church_reports', selectedSheetDate);
     await setDoc(docRef, { ...updates, lastUpdated: new Date().toISOString() }, { merge: true });
   };
 
@@ -251,7 +258,8 @@ export default function App() {
     link.click();
   };
 
-  if (loading) return <div className="flex items-center justify-center min-h-screen bg-slate-900 text-indigo-400 font-black animate-pulse uppercase tracking-[0.3em]">Locating Data...</div>;
+  // Guard against render before state is ready
+  if (loading && isAuthenticated) return <div className="flex items-center justify-center min-h-screen bg-slate-900 text-indigo-400 font-black animate-pulse uppercase tracking-[0.3em]">Locating Data...</div>;
 
   if (!isAuthenticated) return (
     <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
@@ -267,6 +275,9 @@ export default function App() {
       </div>
     </div>
   );
+
+  // Final check for selectedSheetDate before rendering main UI
+  if (!selectedSheetDate) return null;
 
   return (
     <div className="min-h-screen bg-slate-100 p-4 font-sans text-slate-900 pb-32">

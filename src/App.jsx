@@ -6,8 +6,8 @@ import {
   setDoc, 
   onSnapshot,
   collection,
-  query,
   getDocs,
+  query,
   limit
 } from 'firebase/firestore';
 import { 
@@ -24,11 +24,13 @@ import {
   ChevronRight,
   Download,
   Lock,
+  Search,
+  Database,
+  RefreshCw,
   AlertCircle
 } from 'lucide-react';
 
-// --- FIREBASE CONFIGURATION ---
-// Corrected the syntax error in the config object below
+// --- FIREBASE CONFIGURATION (Verified with your project) ---
 const firebaseConfig = {
   apiKey: "AIzaSyDb6oFZEStklFT_Dt2riDbQC_IJPHcT304",
   authDomain: "church-finance-dashboard-40dca.firebaseapp.com",
@@ -38,11 +40,10 @@ const firebaseConfig = {
   appId: "1:480863076081:web:dd01f7270a7cd158f93350"
 };
 
-// Initialize Firebase services
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = 'church-finance-dashboard-40dca'; // Defined for path building
+const appId = 'church-finance-dashboard-40dca';
 
 // --- HELPERS ---
 const formatDate = (date) => `${date.getMonth() + 1}-${date.getDate()}-${date.getFullYear().toString().slice(-2)}`;
@@ -50,7 +51,6 @@ const formatDate = (date) => `${date.getMonth() + 1}-${date.getDate()}-${date.ge
 const getReportingFriday = (dateObj) => {
   const d = new Date(dateObj);
   const day = d.getDay(); 
-  // Adjust to the most recent Friday (Friday = 5)
   const diff = (day >= 5) ? (day - 5) : (day + 2);
   const targetFriday = new Date(d);
   targetFriday.setDate(d.getDate() - diff);
@@ -74,20 +74,21 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loginError, setLoginError] = useState('');
+  const [activeIncomeDay, setActiveIncomeDay] = useState('Sunday');
+  const [expenseCategory, setExpenseCategory] = useState(EXPENSE_CATEGORIES[0]);
   const [selectedSheetDate, setSelectedSheetDate] = useState(getReportingFriday(new Date()));
   const [revenueData, setRevenueData] = useState({});
   const [expenses, setExpenses] = useState([]);
   const [manualStartingBalance, setManualStartingBalance] = useState(null);
   const [isSubmitted, setIsSubmitted] = useState(false);
-  const [previousWeekEndingBalance, setPreviousWeekEndingBalance] = useState(0);
-  const [activeIncomeDay, setActiveIncomeDay] = useState('Sunday');
-  const [expenseCategory, setExpenseCategory] = useState(EXPENSE_CATEGORIES[0]);
+  const [isScanning, setIsScanning] = useState(false);
+  const [foundDates, setFoundDates] = useState([]);
+  const [showScanner, setShowScanner] = useState(false);
 
   // 1. AUTHENTICATION
   useEffect(() => {
     const initAuth = async () => {
       try {
-        // Checking for environment token, otherwise fallback to anonymous
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
           await signInWithCustomToken(auth, __initial_auth_token);
         } else {
@@ -100,11 +101,11 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // 2. MAIN DATA SYNC
+  // 2. DATA SYNC - Listens to the current selected date
   useEffect(() => {
     if (!user || !isAuthenticated || !selectedSheetDate) return;
 
-    // Correct pathing based on your database structure
+    // We look in 'church_reports' collection
     const docPath = doc(db, 'church_reports', selectedSheetDate);
     const unsubscribe = onSnapshot(docPath, (snap) => {
       if (snap.exists()) {
@@ -114,26 +115,51 @@ export default function App() {
         setManualStartingBalance(data.startingBalance ?? null);
         setIsSubmitted(data.status === 'submitted');
       } else {
+        // Reset state if no document found for this specific date string
         setRevenueData({});
         setExpenses([]);
         setManualStartingBalance(null);
         setIsSubmitted(false);
       }
-    }, (err) => console.error("Sync Error:", err));
+    }, (err) => {
+        console.error("Sync Error:", err);
+    });
 
     return () => unsubscribe();
   }, [user, isAuthenticated, selectedSheetDate]);
 
-  // 3. CALCULATIONS
+  // 3. RECOVERY TOOL: Scan the collection for all existing documents
+  const scanForData = async () => {
+    if (!user) return;
+    setIsScanning(true);
+    try {
+      const q = query(collection(db, 'church_reports'), limit(100));
+      const querySnapshot = await getDocs(q);
+      const results = [];
+      querySnapshot.forEach((doc) => {
+        results.push({ id: doc.id, ...doc.data() });
+      });
+      // Sort by ID (Date) descending
+      results.sort((a, b) => b.id.localeCompare(a.id));
+      setFoundDates(results);
+      setShowScanner(true);
+    } catch (e) {
+      console.error("Scanning failed", e);
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
+  // 4. CALCULATIONS
   const currentWeekTotals = useMemo(() => {
     let totalRev = 0;
     Object.values(revenueData).forEach(dayData => {
       Object.values(dayData).forEach(val => totalRev += (parseFloat(val) || 0));
     });
     const exp = expenses.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0);
-    const start = manualStartingBalance !== null ? parseFloat(manualStartingBalance) : previousWeekEndingBalance;
+    const start = manualStartingBalance !== null ? parseFloat(manualStartingBalance) : 0;
     return { rev: totalRev, exp, net: totalRev - exp, start, end: start + (totalRev - exp) };
-  }, [revenueData, expenses, manualStartingBalance, previousWeekEndingBalance]);
+  }, [revenueData, expenses, manualStartingBalance]);
 
   const handleLogin = (e) => {
     e.preventDefault();
@@ -189,16 +215,25 @@ export default function App() {
                 </div>
                 <button onClick={() => changeWeek(1)} className="p-2 hover:bg-slate-100 rounded-full text-slate-400"><ChevronRight/></button>
             </div>
+            
+            <button 
+                onClick={scanForData}
+                className="bg-white px-6 rounded-3xl border border-slate-200 font-black uppercase text-[10px] text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 transition-all flex items-center gap-2"
+            >
+                {isScanning ? <RefreshCw className="animate-spin" size={16}/> : <Database size={16}/>}
+                Search Records
+            </button>
+
             <div className="md:w-64 bg-slate-900 text-white p-6 rounded-3xl shadow-lg border-b-4 border-indigo-500">
                 <p className="text-[10px] font-black uppercase text-slate-400 mb-1 tracking-wider">Weekly Start Balance</p>
                 <div className="flex items-center gap-1">
                     <span className="text-lg font-bold text-indigo-400">$</span>
                     <input 
                         type="number" 
-                        value={manualStartingBalance ?? currentWeekTotals.start}
+                        value={manualStartingBalance ?? 0}
                         disabled={isSubmitted}
                         onChange={(e) => {
-                            const val = e.target.value === '' ? null : parseFloat(e.target.value);
+                            const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
                             setManualStartingBalance(val);
                             updateCloudData({ startingBalance: val });
                         }}
@@ -208,7 +243,46 @@ export default function App() {
             </div>
         </header>
 
-        {/* Totals Bar */}
+        {/* Database Search Results Overlay */}
+        {showScanner && (
+            <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[100] flex items-center justify-center p-6">
+                <div className="bg-white w-full max-w-2xl rounded-[2.5rem] p-8 shadow-2xl max-h-[80vh] flex flex-col">
+                    <div className="flex justify-between items-center mb-6">
+                        <h3 className="text-xl font-black uppercase text-slate-800 flex items-center gap-2"><Database className="text-indigo-600"/> Firebase: church_reports</h3>
+                        <button onClick={() => setShowScanner(false)} className="text-slate-400 hover:text-slate-900 font-bold">Close</button>
+                    </div>
+                    <div className="overflow-y-auto flex-1 space-y-2 pr-2">
+                        {foundDates.length === 0 ? (
+                            <div className="text-center py-20">
+                                <AlertCircle className="mx-auto text-amber-500 mb-4" size={48}/>
+                                <p className="text-slate-400 font-bold uppercase text-xs tracking-widest">No matching records found in Firebase.</p>
+                            </div>
+                        ) : (
+                            foundDates.map((item, i) => (
+                                <button 
+                                    key={i}
+                                    onClick={() => {
+                                        setSelectedSheetDate(item.id);
+                                        setShowScanner(false);
+                                    }}
+                                    className="w-full text-left p-5 bg-slate-50 hover:bg-indigo-50 rounded-2xl border border-slate-100 flex justify-between items-center transition-all group"
+                                >
+                                    <div>
+                                        <span className="text-sm font-black text-slate-800 tracking-tight">{item.id}</span>
+                                        <p className="text-[8px] font-bold text-slate-400 uppercase mt-1">Status: {item.status || 'draft'}</p>
+                                    </div>
+                                    <div className="text-right">
+                                        <span className="text-[10px] font-black text-indigo-600 uppercase opacity-0 group-hover:opacity-100 transition-all">Restore This Date →</span>
+                                    </div>
+                                </button>
+                            ))
+                        )}
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* Financial Summary */}
         <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
             <div className="bg-white p-6 rounded-3xl border border-slate-200 text-center">
                 <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Total Revenue</p>
@@ -226,7 +300,6 @@ export default function App() {
 
         {/* Data Sections */}
         <main className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8">
-            {/* Revenue Column */}
             <section className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-200">
                 <div className="flex gap-1 mb-8 bg-slate-50 p-1.5 rounded-2xl">
                     {INCOME_DAYS.map(day => (
@@ -257,7 +330,6 @@ export default function App() {
                 </div>
             </section>
 
-            {/* Expense Column */}
             <section className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-200 flex flex-col min-h-[500px]">
                 <h3 className="text-[11px] font-black uppercase text-slate-400 mb-6 tracking-[0.2em] flex items-center gap-2">
                   <Wallet size={16} className="text-rose-500"/> Outgoing Funds
@@ -312,7 +384,6 @@ export default function App() {
             </section>
         </main>
 
-        {/* Footer Actions */}
         <footer className="fixed bottom-8 left-1/2 -translate-x-1/2 w-[90%] max-w-lg bg-white/80 backdrop-blur-xl border border-white/50 shadow-2xl rounded-full p-2 flex justify-between items-center z-50">
             <button onClick={() => {
                 const csv = `Category,Amount\n` + expenses.map(e => `${e.category},${e.amount}`).join('\n');
@@ -321,7 +392,7 @@ export default function App() {
                 link.download = `Report_${selectedSheetDate}.csv`;
                 link.click();
             }} className="px-6 py-3 rounded-full text-[10px] font-black uppercase text-slate-500 hover:bg-slate-100 transition-all flex items-center gap-2">
-              <Download size={14}/> CSV
+              <Download size={14}/> Export
             </button>
             <button onClick={() => {
                 if(window.confirm("Lock this week? You won't be able to edit further.")) {

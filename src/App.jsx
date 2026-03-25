@@ -28,13 +28,21 @@ import {
 } from 'lucide-react';
 
 // --- FIREBASE CONFIGURATION ---
+// Corrected the syntax error in the config object below
 const firebaseConfig = {
   apiKey: "AIzaSyDb6oFZEStklFT_Dt2riDbQC_IJPHcT304",
   authDomain: "church-finance-dashboard-40dca.firebaseapp.com",
   projectId: "church-finance-dashboard-40dca",
   storageBucket: "church-finance-dashboard-40dca.firebasestorage.app",
   messagingSenderId: "480863076081",
-  appId: "1:480863076081:web:dd01f7270a7cd158f93350";
+  appId: "1:480863076081:web:dd01f7270a7cd158f93350"
+};
+
+// Initialize Firebase services
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = 'church-finance-dashboard-40dca'; // Defined for path building
 
 // --- HELPERS ---
 const formatDate = (date) => `${date.getMonth() + 1}-${date.getDate()}-${date.getFullYear().toString().slice(-2)}`;
@@ -74,12 +82,12 @@ export default function App() {
   const [previousWeekEndingBalance, setPreviousWeekEndingBalance] = useState(0);
   const [activeIncomeDay, setActiveIncomeDay] = useState('Sunday');
   const [expenseCategory, setExpenseCategory] = useState(EXPENSE_CATEGORIES[0]);
-  const [showConfirmLock, setShowConfirmLock] = useState(false);
 
-  // 1. AUTHENTICATION (RULE 3)
+  // 1. AUTHENTICATION
   useEffect(() => {
     const initAuth = async () => {
       try {
+        // Checking for environment token, otherwise fallback to anonymous
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
           await signInWithCustomToken(auth, __initial_auth_token);
         } else {
@@ -92,35 +100,12 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // 2. DATA DISCOVERY (Optional background fetch)
-  useEffect(() => {
-    if (!user || !isAuthenticated) return;
-    
-    const discoverData = async () => {
-        try {
-            const reportsRef = collection(db, 'artifacts', appId, 'public', 'data', 'church_reports');
-            const qSnap = await getDocs(reportsRef);
-            if (!qSnap.empty) {
-                const dates = qSnap.docs.map(d => {
-                    const parts = d.id.split('-').map(Number);
-                    return { id: d.id, date: new Date(2000 + parts[2], parts[0] - 1, parts[1]) };
-                }).filter(d => !isNaN(d.date.getTime()));
-                
-                if (dates.length > 0) {
-                    dates.sort((a, b) => b.date - a.date);
-                    setSelectedSheetDate(dates[0].id);
-                }
-            }
-        } catch (e) { console.error("Discovery error:", e); }
-    };
-    discoverData();
-  }, [user, isAuthenticated]);
-
-  // 3. MAIN DATA SYNC (RULE 1 & 2)
+  // 2. MAIN DATA SYNC
   useEffect(() => {
     if (!user || !isAuthenticated || !selectedSheetDate) return;
 
-    const docPath = doc(db, 'artifacts', appId, 'public', 'data', 'church_reports', selectedSheetDate);
+    // Correct pathing based on your database structure
+    const docPath = doc(db, 'church_reports', selectedSheetDate);
     const unsubscribe = onSnapshot(docPath, (snap) => {
       if (snap.exists()) {
         const data = snap.data();
@@ -129,7 +114,6 @@ export default function App() {
         setManualStartingBalance(data.startingBalance ?? null);
         setIsSubmitted(data.status === 'submitted');
       } else {
-        // Reset for new weeks
         setRevenueData({});
         setExpenses([]);
         setManualStartingBalance(null);
@@ -140,7 +124,7 @@ export default function App() {
     return () => unsubscribe();
   }, [user, isAuthenticated, selectedSheetDate]);
 
-  // 4. CALCULATIONS
+  // 3. CALCULATIONS
   const currentWeekTotals = useMemo(() => {
     let totalRev = 0;
     Object.values(revenueData).forEach(dayData => {
@@ -170,14 +154,18 @@ export default function App() {
 
   const updateCloudData = async (updates) => {
     if (!user || isSubmitted) return;
-    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'church_reports', selectedSheetDate);
+    const docRef = doc(db, 'church_reports', selectedSheetDate);
     await setDoc(docRef, { ...updates, lastUpdated: new Date().toISOString() }, { merge: true });
   };
 
   if (!isAuthenticated) return (
     <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6">
       <div className="w-full max-w-md bg-white rounded-[2.5rem] p-10 shadow-2xl">
-        <div className="flex justify-center mb-8"><div className="bg-indigo-600 p-5 rounded-3xl text-white shadow-xl shadow-indigo-200"><Lock size={32} /></div></div>
+        <div className="flex justify-center mb-8">
+          <div className="bg-indigo-600 p-5 rounded-3xl text-white shadow-xl shadow-indigo-200">
+            <Lock size={32} />
+          </div>
+        </div>
         <h1 className="text-3xl font-black text-center text-slate-800 uppercase tracking-tight mb-8">Financial Portal</h1>
         <form onSubmit={handleLogin} className="space-y-4">
           <input name="loginId" type="text" placeholder="Admin ID" required className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-indigo-600 font-bold" />
@@ -197,12 +185,12 @@ export default function App() {
                 <button onClick={() => changeWeek(-1)} className="p-2 hover:bg-slate-100 rounded-full text-slate-400"><ChevronLeft/></button>
                 <div className="text-center">
                     <h2 className="text-xl font-black text-slate-800 uppercase">Week of {selectedSheetDate}</h2>
-                    <p className="text-[10px] font-bold text-indigo-600 uppercase">Financial Reporting</p>
+                    <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">Financial Reporting</p>
                 </div>
                 <button onClick={() => changeWeek(1)} className="p-2 hover:bg-slate-100 rounded-full text-slate-400"><ChevronRight/></button>
             </div>
             <div className="md:w-64 bg-slate-900 text-white p-6 rounded-3xl shadow-lg border-b-4 border-indigo-500">
-                <p className="text-[10px] font-black uppercase text-slate-400 mb-1">Weekly Start Balance</p>
+                <p className="text-[10px] font-black uppercase text-slate-400 mb-1 tracking-wider">Weekly Start Balance</p>
                 <div className="flex items-center gap-1">
                     <span className="text-lg font-bold text-indigo-400">$</span>
                     <input 
@@ -271,7 +259,9 @@ export default function App() {
 
             {/* Expense Column */}
             <section className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-200 flex flex-col min-h-[500px]">
-                <h3 className="text-[11px] font-black uppercase text-slate-400 mb-6 tracking-[0.2em] flex items-center gap-2"><Wallet size={16} className="text-rose-500"/> Outgoing Funds</h3>
+                <h3 className="text-[11px] font-black uppercase text-slate-400 mb-6 tracking-[0.2em] flex items-center gap-2">
+                  <Wallet size={16} className="text-rose-500"/> Outgoing Funds
+                </h3>
                 <div className="flex-1 overflow-y-auto space-y-3 mb-6 pr-2">
                     {expenses.length === 0 && <div className="h-full flex flex-col items-center justify-center opacity-20"><Wallet size={48}/><p className="text-[10px] font-black uppercase mt-4">No records yet</p></div>}
                     {expenses.map((exp, idx) => (
@@ -330,7 +320,9 @@ export default function App() {
                 link.href = 'data:text/csv;charset=utf-8,' + encodeURI(csv);
                 link.download = `Report_${selectedSheetDate}.csv`;
                 link.click();
-            }} className="px-6 py-3 rounded-full text-[10px] font-black uppercase text-slate-500 hover:bg-slate-100 transition-all flex items-center gap-2"><Download size={14}/> CSV</button>
+            }} className="px-6 py-3 rounded-full text-[10px] font-black uppercase text-slate-500 hover:bg-slate-100 transition-all flex items-center gap-2">
+              <Download size={14}/> CSV
+            </button>
             <button onClick={() => {
                 if(window.confirm("Lock this week? You won't be able to edit further.")) {
                     updateCloudData({ status: 'submitted' });

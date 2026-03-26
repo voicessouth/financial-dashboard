@@ -27,7 +27,9 @@ import {
   Database,
   Search,
   Loader2,
-  RefreshCw
+  RefreshCw,
+  AlertTriangle,
+  ShieldCheck
 } from 'lucide-react';
 
 // --- FIREBASE CONFIGURATION ---
@@ -39,7 +41,7 @@ const firebaseConfig = typeof __firebase_config !== 'undefined'
   projectId: "church-finance-dashboard-40dca",
   storageBucket: "church-finance-dashboard-40dca.firebasestorage.app",
   messagingSenderId: "480863076081",
-  appId: "1:480863076081:web:dd01f7270a7cd158f93350""
+  appId: "1:480863076081:web:dd01f7270a7cd158f93350"
     };
 
 const app = initializeApp(firebaseConfig);
@@ -88,8 +90,9 @@ export default function App() {
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [logs, setLogs] = useState([]);
+  const [permissionError, setPermissionError] = useState(false);
 
-  const addLog = (msg) => setLogs(prev => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev].slice(0, 5));
+  const addLog = (msg) => setLogs(prev => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev].slice(0, 8));
 
   // 1. AUTHENTICATION
   useEffect(() => {
@@ -97,8 +100,10 @@ export default function App() {
       try {
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
           await signInWithCustomToken(auth, __initial_auth_token);
+          addLog("Secure Token Accepted");
         } else {
           await signInAnonymously(auth);
+          addLog("Anonymous Session Active");
         }
       } catch (err) {
         addLog("Auth Error: " + err.message);
@@ -112,15 +117,16 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // 2. DATA LISTENER - PULLING FROM church_reports
+  // 2. DATA LISTENER
   useEffect(() => {
     if (!user || !isAuthenticated) return;
 
     setIsSyncing(true);
+    setPermissionError(false);
     const dbMode = viewMode.replace(/\s+/g, '_');
     const docId = `${selectedSheetDate}_${dbMode}`;
     
-    // We listen to the path that matches your existing collection: church_reports
+    // Primary path following Rule 1
     const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'church_reports', docId);
     
     const unsubscribe = onSnapshot(docRef, 
@@ -131,16 +137,20 @@ export default function App() {
           setExpenses(data.expenses || []);
           setManualStartingBalance(data.startingBalance || 0);
           setIsSubmitted(data.status === 'submitted');
-          addLog(`Found data for ${selectedSheetDate}`);
+          addLog(`Success: Loaded ${docId}`);
         } else {
-          // If not found in primary path, try a fallback search for root-level legacy data
           checkLegacyData(docId);
         }
         setIsSyncing(false);
       }, 
       (err) => {
-        addLog("Sync Error: " + err.code);
         setIsSyncing(false);
+        if (err.code === 'permission-denied') {
+          setPermissionError(true);
+          addLog("CRITICAL: Permission Denied at Path");
+        } else {
+          addLog("Sync Error: " + err.message);
+        }
       }
     );
 
@@ -149,7 +159,6 @@ export default function App() {
 
   const checkLegacyData = async (docId) => {
     try {
-      // Trying to pull from the specific collection you mentioned
       const legacyRef = doc(db, 'church_reports', selectedSheetDate);
       const legacySnap = await getDoc(legacyRef);
       if (legacySnap.exists()) {
@@ -157,14 +166,15 @@ export default function App() {
         setRevenueData(data.revenue || {});
         setExpenses(data.expenses || []);
         setIsSubmitted(data.status === 'submitted');
-        addLog("Recovered data from church_reports");
+        addLog("Legacy Data Recovered");
       } else {
         setRevenueData({});
         setExpenses([]);
         setIsSubmitted(false);
+        addLog("New Entry Initialized");
       }
     } catch (e) {
-      addLog("New report path active");
+      addLog("Ready for first entry");
     }
   };
 
@@ -182,9 +192,33 @@ export default function App() {
     const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'church_reports', docId);
     
     try {
-      await setDoc(docRef, { ...updates, lastUpdated: new Date().toISOString() }, { merge: true });
+      await setDoc(docRef, { 
+        ...updates, 
+        lastUpdated: new Date().toISOString(),
+        updatedBy: user.uid 
+      }, { merge: true });
     } catch (e) {
-      addLog("Save failed: Permission check");
+      addLog("Save Blocked: Verify permissions");
+      setPermissionError(true);
+    }
+  };
+
+  const runDiagnostics = async () => {
+    addLog("Running Diagnostic Engine...");
+    if (!user) {
+      addLog("Error: No active user session");
+      return;
+    }
+    addLog(`User ID Verified: ${user.uid}`);
+    addLog("Attempting ping to storage root...");
+    try {
+      // Test write to diagnostic log
+      const diagRef = doc(db, 'artifacts', appId, 'public', 'data', 'system_logs', 'last_check');
+      await setDoc(diagRef, { timestamp: new Date().toISOString(), status: 'active' });
+      addLog("Write Access: CONFIRMED");
+      setPermissionError(false);
+    } catch (e) {
+      addLog(`Write Access: FAILED (${e.code})`);
     }
   };
 
@@ -237,6 +271,21 @@ export default function App() {
           </div>
         </div>
       </nav>
+
+      {permissionError && (
+        <div className="max-w-6xl mx-auto mt-4 px-6">
+          <div className="bg-rose-50 border border-rose-100 p-4 rounded-2xl flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="text-rose-500" size={20}/>
+              <div>
+                <p className="text-xs font-black text-rose-900 uppercase">Database Access Restricted</p>
+                <p className="text-[10px] text-rose-600 font-bold uppercase">The system detected a permission conflict. Some data may not save.</p>
+              </div>
+            </div>
+            <button onClick={runDiagnostics} className="bg-rose-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-700">Repair Connection</button>
+          </div>
+        </div>
+      )}
 
       <header className="max-w-6xl mx-auto mt-8 px-6 flex flex-col md:flex-row gap-6 items-center justify-between">
         <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm flex items-center gap-10">
@@ -371,9 +420,15 @@ export default function App() {
       </main>
 
       <div className="max-w-6xl mx-auto mt-6 px-6">
+        <div className="flex items-center gap-2 mb-2">
+           <ShieldCheck size={12} className="text-indigo-400"/>
+           <span className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Cloud Transaction Log</span>
+        </div>
         <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
           {logs.map((log, i) => (
-            <div key={i} className="whitespace-nowrap bg-slate-100 text-[8px] font-bold text-slate-400 px-3 py-1 rounded-full border border-slate-200 uppercase tracking-widest">{log}</div>
+            <div key={i} className={`whitespace-nowrap bg-white text-[8px] font-bold px-3 py-1 rounded-full border uppercase tracking-widest ${log.includes('CRITICAL') ? 'text-rose-500 border-rose-200 bg-rose-50' : 'text-slate-400 border-slate-200'}`}>
+              {log}
+            </div>
           ))}
         </div>
       </div>

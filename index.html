@@ -73,13 +73,12 @@
                         <span class="w-3 h-3 rounded-full bg-emerald-500 shadow-lg shadow-emerald-200"></span> Income Entry
                     </h3>
                     <div id="income-grid" class="space-y-3">
-                        <!-- Revenue items injected here -->
+                        <!-- Revenue items hardcoded/injected here -->
                     </div>
                 </div>
 
                 <!-- EXPENSES & SUMMARY -->
                 <div class="space-y-6">
-                    <!-- New Expense Entry -->
                     <div class="bg-white p-7 rounded-[2.5rem] border shadow-sm">
                         <h3 class="font-black text-[11px] uppercase tracking-[0.2em] text-slate-400 mb-6 flex items-center gap-3">
                             <span class="w-3 h-3 rounded-full bg-rose-500 shadow-lg shadow-rose-200"></span> Log Expense
@@ -105,11 +104,9 @@
                         </div>
                     </div>
 
-                    <!-- Expense List -->
                     <div class="bg-white p-7 rounded-[2.5rem] border shadow-sm">
                         <h3 class="font-black text-[11px] uppercase tracking-[0.2em] text-slate-400 mb-4">Transaction History</h3>
                         <div id="expense-list" class="space-y-2 max-h-[300px] overflow-y-auto custom-scroll pr-2">
-                            <!-- List injected here -->
                         </div>
                     </div>
                 </div>
@@ -131,7 +128,6 @@
     </div>
 
     <script>
-        // --- FIREBASE CONFIG ---
         const config = {
             apiKey: "AIzaSyDb6oFZEStklFT_Dt2riDbQC_IJPHcT304",
             authDomain: "church-finance-dashboard-40dca.firebaseapp.com",
@@ -145,7 +141,6 @@
         let currentDate = new Date();
         let currentData = { revenue: {}, expenses: [], status: 'open' };
         
-        // Match the specific categories you needed
         const revenueCategories = [
             'Sunday Offering', 
             'Tuesday Offering', 
@@ -155,7 +150,7 @@
         ];
 
         window.onload = async () => {
-            // Adjust to the closest previous Tuesday as the week marker
+            // Find current week Tuesday (Dashboard anchor)
             const day = currentDate.getDay();
             const diff = day >= 2 ? day - 2 : day + 5; 
             currentDate.setDate(currentDate.getDate() - diff);
@@ -166,7 +161,7 @@
                 auth = firebase.auth();
                 await auth.signInAnonymously();
             } catch (e) {
-                console.error("Database Connection Failed", e);
+                console.error("Connection error", e);
             }
         };
 
@@ -196,12 +191,14 @@
 
             const docRef = db.collection('reports').doc(dateStr);
             unsubscribe = docRef.onSnapshot((doc) => {
-                if (doc.exists) {
-                    currentData = doc.data();
-                } else {
-                    currentData = { revenue: {}, expenses: [], status: 'open' };
-                    revenueCategories.forEach(c => currentData.revenue[c] = 0);
-                }
+                const data = doc.exists ? doc.data() : { revenue: {}, expenses: [], status: 'open' };
+                
+                // Ensure all categories exist in the local data object
+                revenueCategories.forEach(cat => {
+                    if (data.revenue[cat] === undefined) data.revenue[cat] = 0;
+                });
+                
+                currentData = data;
                 renderUI();
             });
         }
@@ -209,13 +206,13 @@
         function renderUI() {
             const isLocked = currentData.status === 'submitted';
             
-            // 1. Render Revenue Fields
+            // Render Revenue Fields
             const grid = document.getElementById('income-grid');
             grid.innerHTML = '';
             let totalIn = 0;
+
             revenueCategories.forEach(cat => {
                 const val = currentData.revenue[cat] || 0;
-                // Don't count "Bank Balance" in the weekly math
                 if (cat !== 'Current Bank Balance') totalIn += parseFloat(val);
                 
                 grid.innerHTML += `
@@ -231,7 +228,7 @@
                 `;
             });
 
-            // 2. Render Expense List
+            // Render Expense List
             const list = document.getElementById('expense-list');
             list.innerHTML = '';
             let totalOut = 0;
@@ -241,7 +238,7 @@
                     <div class="flex justify-between items-center p-4 bg-slate-50 rounded-2xl border border-slate-100 group">
                         <div>
                             <p class="text-[10px] font-black uppercase text-slate-400">${exp.category}</p>
-                            <p class="text-xs font-bold text-rose-500">-$${parseFloat(exp.amount).toLocaleString()}</p>
+                            <p class="text-xs font-bold text-rose-500">-$${parseFloat(exp.amount).toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
                         </div>
                         <button onclick="removeExp(${i})" ${isLocked ? 'disabled' : ''} class="opacity-0 group-hover:opacity-100 text-rose-300 hover:text-rose-600 transition-all">
                             <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
@@ -249,34 +246,11 @@
                     </div>
                 `;
             });
-            if (currentData.expenses.length === 0) list.innerHTML = '<p class="text-center py-8 text-[10px] font-black uppercase text-slate-300">No expenses logged</p>';
 
-            // 3. Totals
             const net = totalIn - totalOut;
             const totalEl = document.getElementById('total-val');
             totalEl.innerText = (net < 0 ? '-' : '') + '$' + Math.abs(net).toLocaleString(undefined, {minimumFractionDigits: 2});
             totalEl.className = `text-4xl font-black tracking-tighter italic ${net < 0 ? 'text-rose-500' : 'text-emerald-400'}`;
-
-            // 4. Lock UI
-            const sealBtn = document.getElementById('seal-btn');
-            const addBtn = document.getElementById('add-btn');
-            if (isLocked) {
-                sealBtn.innerText = "WEEK FINALIZED";
-                sealBtn.disabled = true;
-                sealBtn.className = "bg-slate-800 text-slate-500 px-10 py-4 rounded-[1.5rem] font-black uppercase text-xs tracking-widest cursor-not-allowed";
-                addBtn.disabled = true;
-                addBtn.classList.add('opacity-50');
-                document.getElementById('sync-status').innerText = "ARCHIVED REPORT";
-                document.getElementById('sync-dot').classList.replace('bg-emerald-500', 'bg-rose-500');
-            } else {
-                sealBtn.innerText = "FINALIZE WEEK";
-                sealBtn.disabled = false;
-                sealBtn.className = "bg-white text-black px-10 py-4 rounded-[1.5rem] font-black uppercase text-xs tracking-widest hover:bg-emerald-500 hover:text-white transition-all";
-                addBtn.disabled = false;
-                addBtn.classList.remove('opacity-50');
-                document.getElementById('sync-status').innerText = "LIVE SYNC ENABLED";
-                document.getElementById('sync-dot').classList.replace('bg-rose-500', 'bg-emerald-500');
-            }
         }
 
         async function updateRev(cat, val) {
@@ -288,6 +262,7 @@
             const cat = document.getElementById('exp-cat').value;
             const amt = document.getElementById('exp-amt').value;
             if(!amt) return;
+            if (!currentData.expenses) currentData.expenses = [];
             currentData.expenses.unshift({ category: cat, amount: amt, timestamp: Date.now() });
             document.getElementById('exp-amt').value = '';
             save();

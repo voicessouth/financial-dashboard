@@ -5,7 +5,6 @@ import {
   doc, 
   setDoc, 
   onSnapshot,
-  getDoc,
   collection
 } from 'firebase/firestore';
 import { 
@@ -25,11 +24,11 @@ import {
   CheckCircle2,
   XCircle,
   Database,
-  Search,
   Loader2,
   RefreshCw,
   AlertTriangle,
-  ShieldCheck
+  ShieldCheck,
+  Zap
 } from 'lucide-react';
 
 // --- FIREBASE CONFIGURATION ---
@@ -41,7 +40,7 @@ const firebaseConfig = typeof __firebase_config !== 'undefined'
   projectId: "church-finance-dashboard-40dca",
   storageBucket: "church-finance-dashboard-40dca.firebasestorage.app",
   messagingSenderId: "480863076081",
-  appId: "1:480863076081:web:dd01f7270a7cd158f93350"
+  appId: "1:480863076081:web:dd01f7270a7cd158f93350""
     };
 
 const app = initializeApp(firebaseConfig);
@@ -92,42 +91,47 @@ export default function App() {
   const [logs, setLogs] = useState([]);
   const [permissionError, setPermissionError] = useState(false);
 
-  const addLog = (msg) => setLogs(prev => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev].slice(0, 8));
+  const addLog = (msg) => setLogs(prev => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev].slice(0, 10));
 
-  // 1. AUTHENTICATION
+  // 1. AUTHENTICATION (RULE 3)
   useEffect(() => {
     const initAuth = async () => {
       try {
+        setAuthReady(false);
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
           await signInWithCustomToken(auth, __initial_auth_token);
-          addLog("Secure Token Accepted");
+          addLog("Secure Token Bound");
         } else {
           await signInAnonymously(auth);
-          addLog("Anonymous Session Active");
+          addLog("Auth: Anonymous Session");
         }
       } catch (err) {
-        addLog("Auth Error: " + err.message);
+        addLog("Auth Fail: " + err.code);
+      } finally {
+        setAuthReady(true);
       }
     };
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
-      setAuthReady(true);
+      if (u) addLog(`Logged in as: ${u.uid.slice(0,8)}...`);
     });
     initAuth();
     return () => unsubscribe();
   }, []);
 
-  // 2. DATA LISTENER
+  // 2. DATA LISTENER (RULES 1 & 2)
   useEffect(() => {
+    // Only fetch if authenticated AND logged into UI
     if (!user || !isAuthenticated) return;
 
     setIsSyncing(true);
     setPermissionError(false);
-    const dbMode = viewMode.replace(/\s+/g, '_');
-    const docId = `${selectedSheetDate}_${dbMode}`;
     
-    // Primary path following Rule 1
-    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'church_reports', docId);
+    // Strict Path Construction following Rule 1
+    const sanitizedMode = viewMode.replace(/\s+/g, '_').toLowerCase();
+    const docId = `${selectedSheetDate}_${sanitizedMode}`;
+    
+    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'reports', docId);
     
     const unsubscribe = onSnapshot(docRef, 
       (snap) => {
@@ -137,9 +141,14 @@ export default function App() {
           setExpenses(data.expenses || []);
           setManualStartingBalance(data.startingBalance || 0);
           setIsSubmitted(data.status === 'submitted');
-          addLog(`Success: Loaded ${docId}`);
+          addLog(`Sync: ${docId} loaded`);
         } else {
-          checkLegacyData(docId);
+          // Reset for new entry
+          setRevenueData({});
+          setExpenses([]);
+          setManualStartingBalance(0);
+          setIsSubmitted(false);
+          addLog(`New: Created ${docId}`);
         }
         setIsSyncing(false);
       }, 
@@ -147,36 +156,15 @@ export default function App() {
         setIsSyncing(false);
         if (err.code === 'permission-denied') {
           setPermissionError(true);
-          addLog("CRITICAL: Permission Denied at Path");
+          addLog("DENIED: System Policy Block");
         } else {
-          addLog("Sync Error: " + err.message);
+          addLog("Error: " + err.message);
         }
       }
     );
 
     return () => unsubscribe();
   }, [user, isAuthenticated, selectedSheetDate, viewMode]);
-
-  const checkLegacyData = async (docId) => {
-    try {
-      const legacyRef = doc(db, 'church_reports', selectedSheetDate);
-      const legacySnap = await getDoc(legacyRef);
-      if (legacySnap.exists()) {
-        const data = legacySnap.data();
-        setRevenueData(data.revenue || {});
-        setExpenses(data.expenses || []);
-        setIsSubmitted(data.status === 'submitted');
-        addLog("Legacy Data Recovered");
-      } else {
-        setRevenueData({});
-        setExpenses([]);
-        setIsSubmitted(false);
-        addLog("New Entry Initialized");
-      }
-    } catch (e) {
-      addLog("Ready for first entry");
-    }
-  };
 
   const totals = useMemo(() => {
     const rev = Object.values(revenueData).reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
@@ -185,11 +173,13 @@ export default function App() {
     return { rev, exp, start, end: start + (rev - exp) };
   }, [revenueData, expenses, manualStartingBalance]);
 
+  // SAVE HANDLER
   const handleSave = async (updates) => {
     if (!user || !isAuthenticated || isSubmitted) return;
-    const dbMode = viewMode.replace(/\s+/g, '_');
-    const docId = `${selectedSheetDate}_${dbMode}`;
-    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'church_reports', docId);
+    
+    const sanitizedMode = viewMode.replace(/\s+/g, '_').toLowerCase();
+    const docId = `${selectedSheetDate}_${sanitizedMode}`;
+    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'reports', docId);
     
     try {
       await setDoc(docRef, { 
@@ -198,54 +188,57 @@ export default function App() {
         updatedBy: user.uid 
       }, { merge: true });
     } catch (e) {
-      addLog("Save Blocked: Verify permissions");
-      setPermissionError(true);
+      addLog(`Save Error: ${e.code}`);
+      if (e.code === 'permission-denied') setPermissionError(true);
     }
   };
 
-  const runDiagnostics = async () => {
-    addLog("Running Diagnostic Engine...");
-    if (!user) {
-      addLog("Error: No active user session");
-      return;
-    }
-    addLog(`User ID Verified: ${user.uid}`);
-    addLog("Attempting ping to storage root...");
+  const forceRepair = async () => {
+    addLog("Initiating Hard Reset...");
     try {
-      // Test write to diagnostic log
-      const diagRef = doc(db, 'artifacts', appId, 'public', 'data', 'system_logs', 'last_check');
-      await setDoc(diagRef, { timestamp: new Date().toISOString(), status: 'active' });
-      addLog("Write Access: CONFIRMED");
+      await auth.signOut();
+      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+        await signInWithCustomToken(auth, __initial_auth_token);
+      } else {
+        await signInAnonymously(auth);
+      }
+      addLog("Token Refreshed. Ready.");
       setPermissionError(false);
     } catch (e) {
-      addLog(`Write Access: FAILED (${e.code})`);
+      addLog("Repair Failed: " + e.code);
     }
   };
 
   if (!authReady) return (
     <div className="min-h-screen bg-slate-900 flex items-center justify-center">
-      <Loader2 className="animate-spin text-indigo-400" size={32}/>
+      <div className="text-center">
+        <Loader2 className="animate-spin text-indigo-400 mb-4 mx-auto" size={40}/>
+        <p className="text-indigo-300 font-black text-[10px] uppercase tracking-widest">Handshaking Database...</p>
+      </div>
     </div>
   );
 
   if (!isAuthenticated) return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6 text-slate-900">
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
       <div className="w-full max-w-md bg-white rounded-[2.5rem] p-10 shadow-2xl">
         <div className="text-center mb-8">
           <div className="w-16 h-16 bg-indigo-600 rounded-2xl flex items-center justify-center text-white mx-auto mb-4 shadow-lg"><Lock size={24}/></div>
-          <h1 className="text-xl font-black uppercase tracking-tight">Financial Vault</h1>
-          <p className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest mt-1">Voices South Admin</p>
+          <h1 className="text-xl font-black uppercase tracking-tight text-slate-900">Financial Vault</h1>
+          <p className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest mt-1">Voices South Admin Access</p>
         </div>
         <form onSubmit={(e) => {
           e.preventDefault();
           const d = new FormData(e.target);
           if (d.get('id') === ADMIN_CREDENTIALS.loginId && d.get('pw') === ADMIN_CREDENTIALS.password) {
             setIsAuthenticated(true);
+            addLog("UI Access Granted");
+          } else {
+            addLog("Invalid Credentials Attempted");
           }
         }} className="space-y-3">
-          <input name="id" type="text" placeholder="Admin ID" required className="w-full px-5 py-4 bg-slate-100 rounded-xl outline-none font-bold" />
-          <input name="pw" type="password" placeholder="Passkey" required className="w-full px-5 py-4 bg-slate-100 rounded-xl outline-none font-bold" />
-          <button type="submit" className="w-full bg-slate-900 text-white py-4 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-indigo-600 transition-all mt-4">Login to Database</button>
+          <input name="id" type="text" placeholder="Admin ID" required className="w-full px-5 py-4 bg-slate-100 rounded-xl outline-none font-bold text-slate-900" />
+          <input name="pw" type="password" placeholder="Passkey" required className="w-full px-5 py-4 bg-slate-100 rounded-xl outline-none font-bold text-slate-900" />
+          <button type="submit" className="w-full bg-slate-900 text-white py-4 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-indigo-600 transition-all mt-4">Connect to Ledger</button>
         </form>
       </div>
     </div>
@@ -257,7 +250,7 @@ export default function App() {
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div className="flex bg-slate-100 p-1 rounded-xl">
             {['Sun', 'Tue', 'End of Week', 'End of Month'].map(m => (
-              <button key={m} onClick={() => setViewMode(m)} className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-tighter ${viewMode === m ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}>
+              <button key={m} onClick={() => setViewMode(m)} className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-tighter transition-all ${viewMode === m ? 'bg-white text-indigo-600 shadow-sm scale-105' : 'text-slate-400 hover:text-slate-600'}`}>
                 {m}
               </button>
             ))}
@@ -265,7 +258,7 @@ export default function App() {
           <div className="flex gap-3">
              <button onClick={() => window.location.reload()} className="p-2 text-slate-400 hover:text-indigo-600 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest bg-slate-50 rounded-lg px-3">
                <RefreshCw size={14} className={isSyncing ? "animate-spin" : ""} />
-               Sync Database
+               Sync
              </button>
              <button onClick={() => setIsAuthenticated(false)} className="text-slate-300 hover:text-rose-500"><XCircle size={20}/></button>
           </div>
@@ -273,16 +266,16 @@ export default function App() {
       </nav>
 
       {permissionError && (
-        <div className="max-w-6xl mx-auto mt-4 px-6">
-          <div className="bg-rose-50 border border-rose-100 p-4 rounded-2xl flex items-center justify-between">
+        <div className="max-w-6xl mx-auto mt-4 px-6 animate-pulse">
+          <div className="bg-rose-600 border border-rose-700 p-4 rounded-2xl flex items-center justify-between shadow-xl shadow-rose-100">
             <div className="flex items-center gap-3">
-              <AlertTriangle className="text-rose-500" size={20}/>
+              <Zap className="text-rose-200 fill-rose-200" size={20}/>
               <div>
-                <p className="text-xs font-black text-rose-900 uppercase">Database Access Restricted</p>
-                <p className="text-[10px] text-rose-600 font-bold uppercase">The system detected a permission conflict. Some data may not save.</p>
+                <p className="text-xs font-black text-white uppercase">Security Override Required</p>
+                <p className="text-[10px] text-rose-100 font-bold uppercase">The database rejected the current token. Click to re-handshake.</p>
               </div>
             </div>
-            <button onClick={runDiagnostics} className="bg-rose-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-700">Repair Connection</button>
+            <button onClick={forceRepair} className="bg-white text-rose-600 px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-50 transition-colors">Fix Now</button>
           </div>
         </div>
       )}
@@ -327,7 +320,7 @@ export default function App() {
           </div>
           
           <div className="mb-6 p-4 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between">
-            <span className="text-[10px] font-black text-slate-400 uppercase">Starting Cash Balance</span>
+            <span className="text-[10px] font-black text-slate-400 uppercase">Starting Balance</span>
             <div className="flex items-center gap-1 font-black text-slate-800">
               <span className="text-slate-300">$</span>
               <input type="number" value={manualStartingBalance || ''} disabled={isSubmitted}
@@ -366,8 +359,8 @@ export default function App() {
           <div className="flex-1 space-y-3 mb-6 overflow-y-auto max-h-[350px] pr-2">
             {expenses.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center opacity-20 py-20">
-                <Database size={32} className="mb-2"/>
-                <p className="text-[10px] font-black uppercase tracking-widest text-center">No expenses recorded<br/>for this period</p>
+                <Database size={32} className="mb-2 text-slate-400"/>
+                <p className="text-[10px] font-black uppercase tracking-widest text-center text-slate-400">Ledger Empty</p>
               </div>
             ) : (
               expenses.map((exp, idx) => (
@@ -383,7 +376,7 @@ export default function App() {
                         const updated = expenses.filter((_, i) => i !== idx);
                         setExpenses(updated);
                         handleSave({ expenses: updated });
-                      }} className="text-slate-200 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all"><XCircle size={14}/></button>
+                      }} className="text-slate-200 hover:text-rose-500 transition-all"><XCircle size={14}/></button>
                     )}
                   </div>
                 </div>
@@ -422,11 +415,11 @@ export default function App() {
       <div className="max-w-6xl mx-auto mt-6 px-6">
         <div className="flex items-center gap-2 mb-2">
            <ShieldCheck size={12} className="text-indigo-400"/>
-           <span className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Cloud Transaction Log</span>
+           <span className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Transaction Heartbeat</span>
         </div>
         <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
           {logs.map((log, i) => (
-            <div key={i} className={`whitespace-nowrap bg-white text-[8px] font-bold px-3 py-1 rounded-full border uppercase tracking-widest ${log.includes('CRITICAL') ? 'text-rose-500 border-rose-200 bg-rose-50' : 'text-slate-400 border-slate-200'}`}>
+            <div key={i} className={`whitespace-nowrap bg-white text-[8px] font-bold px-3 py-1 rounded-full border uppercase tracking-widest ${log.includes('DENIED') || log.includes('Fail') ? 'text-rose-500 border-rose-200 bg-rose-50' : 'text-slate-400 border-slate-200'}`}>
               {log}
             </div>
           ))}
@@ -441,7 +434,7 @@ export default function App() {
             className={`flex-1 py-4 rounded-[1.8rem] font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${isSubmitted ? 'bg-slate-100 text-slate-400' : 'bg-slate-900 text-white hover:bg-indigo-600 shadow-xl'}`}
           >
             {isSubmitted ? <CheckCircle2 size={16}/> : <BarChart3 size={16}/>}
-            {isSubmitted ? 'Record Locked & Verified' : 'Submit Weekly Report'}
+            {isSubmitted ? 'Ledger Verified' : 'Submit Weekly Report'}
           </button>
         </div>
       </footer>

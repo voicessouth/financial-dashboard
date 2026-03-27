@@ -1,28 +1,115 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Church Financial Dashboard</title>
-    <!-- We use Tailwind for the styling -->
     <script src="https://cdn.tailwindcss.com"></script>
-  </head>
-  <body>
-    <!-- This is where the React app will be injected -->
-    <div id="root"></div>
-    
-    <!-- This script starts your React application -->
-    <script type="module">
-      import React from 'react';
-      import ReactDOM from 'react-dom/client';
-      import App from './src/App.jsx';
+    <script src="https://www.gstatic.com/firebasejs/11.0.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.0.2/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore-compat.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #020617; color: white; margin: 0; overflow-x: hidden; }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center">
 
-      const root = ReactDOM.createRoot(document.getElementById('root'));
-      root.render(
-        React.createElement(React.StrictMode, null, 
-          React.createElement(App)
-        )
-      );
+    <!-- ERROR OVERLAY -->
+    <div id="error-screen" class="hidden fixed inset-0 z-[100] bg-slate-950 flex items-center justify-center p-6 text-center">
+        <div class="max-w-sm">
+            <div class="text-rose-500 mb-4 text-5xl">⚠️</div>
+            <h1 class="text-xl font-black uppercase tracking-tighter mb-2">Connection Issue</h1>
+            <p id="error-msg" class="text-slate-400 text-sm mb-6 leading-relaxed">Firebase: Error (auth/invalid-api-key)</p>
+            <div class="flex flex-col gap-3">
+                <button onclick="location.reload()" class="w-full py-3 bg-white text-black font-black uppercase text-xs rounded-xl shadow-lg">Retry Connection</button>
+                <button onclick="bypassToLogin()" class="w-full py-3 bg-slate-800 text-slate-400 font-bold uppercase text-[10px] rounded-xl border border-slate-700">Continue to Dashboard (Preview Mode)</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- LOGIN SCREEN -->
+    <div id="login-screen" class="w-full max-w-md bg-white rounded-[2.5rem] p-10 text-slate-900 shadow-2xl m-4">
+        <div class="text-center mb-10">
+            <div class="w-16 h-16 bg-slate-950 rounded-2xl flex items-center justify-center text-white mx-auto mb-6">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </div>
+            <h1 class="text-2xl font-black uppercase tracking-tighter">Voices South</h1>
+            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Financial Portal v2.0</p>
+        </div>
+        <div class="space-y-4">
+            <input id="login-id" type="text" placeholder="Admin ID" class="w-full px-5 py-4 bg-slate-100 rounded-xl font-bold border-2 border-transparent focus:border-indigo-500 transition-all">
+            <input id="login-pw" type="password" placeholder="Password" class="w-full px-5 py-4 bg-slate-100 rounded-xl font-bold border-2 border-transparent focus:border-indigo-500 transition-all">
+            <button onclick="handleLogin()" id="login-btn" class="w-full bg-slate-950 text-white py-4 rounded-xl font-black uppercase tracking-widest hover:bg-indigo-600 transition-all shadow-xl">Enter Dashboard</button>
+        </div>
+    </div>
+
+    <!-- MAIN DASHBOARD -->
+    <div id="dashboard-screen" class="hidden fixed inset-0 bg-[#f8fafc] text-slate-900 overflow-y-auto">
+        <!-- ... Dashboard Content ... -->
+        <nav class="bg-white border-b p-4 sticky top-0 z-50 flex justify-between items-center shadow-sm">
+            <span class="font-black text-xs uppercase tracking-tighter">Voices South Financials</span>
+            <button onclick="location.reload()" class="text-slate-400">Logout</button>
+        </nav>
+        <div class="max-w-4xl mx-auto p-6 text-center">
+            <h2 id="current-date" class="text-4xl font-black italic">Loading Date...</h2>
+            <p class="text-slate-500 text-xs mt-4">Database successfully connected.</p>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // PASTE YOUR FIREBASE CONFIG BEYOND THIS LINE
+        // ==========================================
+        const config = {
+            apiKey: "AIzaSyDb6oFZEStklFT_Dt2riDbQC_IJPHcT304",
+  authDomain: "church-finance-dashboard-40dca.firebaseapp.com",
+  projectId: "church-finance-dashboard-40dca",
+  storageBucket: "church-finance-dashboard-40dca.firebasestorage.app",
+  messagingSenderId: "480863076081",
+  appId: "1:480863076081:web:dd01f7270a7cd158f93350"
+        };
+        // ==========================================
+
+        let db, auth;
+        let isBypassMode = false;
+
+        window.onload = async () => {
+            const today = new Date();
+            document.getElementById('current-date').innerText = (today.getMonth()+1) + '-' + today.getDate() + '-' + today.getFullYear();
+
+            try {
+                if (config.apiKey.includes("PASTE_YOUR")) throw new Error("auth/invalid-api-key");
+                firebase.initializeApp(config);
+                db = firebase.firestore();
+                auth = firebase.auth();
+                await auth.signInAnonymously();
+            } catch (e) {
+                showError(e.message);
+            }
+        };
+
+        function showError(msg) {
+            document.getElementById('error-screen').classList.remove('hidden');
+            document.getElementById('error-msg').innerText = "Database Connection Failed: " + msg;
+        }
+
+        function bypassToLogin() {
+            isBypassMode = true;
+            document.getElementById('error-screen').classList.add('hidden');
+        }
+
+        function handleLogin() {
+            const id = document.getElementById('login-id').value;
+            const pw = document.getElementById('login-pw').value;
+            if (id === "voicessouth" && pw === "3894South") {
+                document.getElementById('login-screen').classList.add('hidden');
+                document.getElementById('dashboard-screen').classList.remove('hidden');
+            } else {
+                alert("Incorrect credentials");
+            }
+        }
     </script>
-  </body>
+</body>
 </html>

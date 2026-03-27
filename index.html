@@ -3,102 +3,150 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Church Financial Dashboard</title>
+    <title>Voices South Financial Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://www.gstatic.com/firebasejs/11.0.2/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/11.0.2/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore-compat.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #020617; color: white; margin: 0; overflow-x: hidden; }
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; }
         .hidden { display: none !important; }
+        .custom-scroll::-webkit-scrollbar { width: 4px; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
     </style>
 </head>
-<body class="min-h-screen flex items-center justify-center">
-
-    <!-- ERROR OVERLAY -->
-    <div id="error-screen" class="hidden fixed inset-0 z-[100] bg-slate-950 flex items-center justify-center p-6 text-center">
-        <div class="max-w-sm">
-            <div class="text-rose-500 mb-4 text-5xl">⚠️</div>
-            <h1 class="text-xl font-black uppercase tracking-tighter mb-2">Connection Issue</h1>
-            <p id="error-msg" class="text-slate-400 text-sm mb-6 leading-relaxed">Firebase: Error (auth/invalid-api-key)</p>
-            <div class="flex flex-col gap-3">
-                <button onclick="location.reload()" class="w-full py-3 bg-white text-black font-black uppercase text-xs rounded-xl shadow-lg">Retry Connection</button>
-                <button onclick="bypassToLogin()" class="w-full py-3 bg-slate-800 text-slate-400 font-bold uppercase text-[10px] rounded-xl border border-slate-700">Continue to Dashboard (Preview Mode)</button>
-            </div>
-        </div>
-    </div>
+<body class="min-h-screen">
 
     <!-- LOGIN SCREEN -->
-    <div id="login-screen" class="w-full max-w-md bg-white rounded-[2.5rem] p-10 text-slate-900 shadow-2xl m-4">
-        <div class="text-center mb-10">
-            <div class="w-16 h-16 bg-slate-950 rounded-2xl flex items-center justify-center text-white mx-auto mb-6">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+    <div id="login-screen" class="fixed inset-0 bg-slate-950 flex items-center justify-center p-4 z-[100]">
+        <div class="w-full max-w-md bg-white rounded-[2.5rem] p-10 text-slate-900 shadow-2xl">
+            <div class="text-center mb-10">
+                <div class="w-16 h-16 bg-slate-900 rounded-2xl flex items-center justify-center text-white mx-auto mb-6">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                </div>
+                <h1 class="text-2xl font-black uppercase tracking-tighter">Voices South</h1>
+                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Financial Portal v2.0</p>
             </div>
-            <h1 class="text-2xl font-black uppercase tracking-tighter">Voices South</h1>
-            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Financial Portal v2.0</p>
-        </div>
-        <div class="space-y-4">
-            <input id="login-id" type="text" placeholder="Admin ID" class="w-full px-5 py-4 bg-slate-100 rounded-xl font-bold border-2 border-transparent focus:border-indigo-500 transition-all">
-            <input id="login-pw" type="password" placeholder="Password" class="w-full px-5 py-4 bg-slate-100 rounded-xl font-bold border-2 border-transparent focus:border-indigo-500 transition-all">
-            <button onclick="handleLogin()" id="login-btn" class="w-full bg-slate-950 text-white py-4 rounded-xl font-black uppercase tracking-widest hover:bg-indigo-600 transition-all shadow-xl">Enter Dashboard</button>
+            <div class="space-y-4">
+                <input id="login-id" type="text" placeholder="Admin ID" class="w-full px-5 py-4 bg-slate-100 rounded-xl font-bold border-2 border-transparent focus:border-indigo-500 transition-all outline-none">
+                <input id="login-pw" type="password" placeholder="Password" class="w-full px-5 py-4 bg-slate-100 rounded-xl font-bold border-2 border-transparent focus:border-indigo-500 transition-all outline-none">
+                <button onclick="handleLogin()" id="login-btn" class="w-full bg-slate-900 text-white py-4 rounded-xl font-black uppercase tracking-widest hover:bg-indigo-600 transition-all shadow-xl">Enter Dashboard</button>
+            </div>
         </div>
     </div>
 
     <!-- MAIN DASHBOARD -->
-    <div id="dashboard-screen" class="hidden fixed inset-0 bg-[#f8fafc] text-slate-900 overflow-y-auto">
-        <!-- ... Dashboard Content ... -->
-        <nav class="bg-white border-b p-4 sticky top-0 z-50 flex justify-between items-center shadow-sm">
-            <span class="font-black text-xs uppercase tracking-tighter">Voices South Financials</span>
-            <button onclick="location.reload()" class="text-slate-400">Logout</button>
+    <div id="dashboard-screen" class="hidden min-h-screen pb-32">
+        <nav class="bg-white border-b p-4 sticky top-0 z-50 flex justify-between items-center shadow-sm px-6">
+            <div class="flex items-center gap-2">
+                <div class="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center text-white text-xs font-black">V</div>
+                <span class="font-black text-xs uppercase tracking-tighter text-slate-900">Voices South Financials</span>
+            </div>
+            <button onclick="location.reload()" class="text-[10px] font-black uppercase text-slate-400 hover:text-rose-500 transition-colors">Logout</button>
         </nav>
-        <div class="max-w-4xl mx-auto p-6 text-center">
-            <h2 id="current-date" class="text-4xl font-black italic">Loading Date...</h2>
-            <p class="text-slate-500 text-xs mt-4">Database successfully connected.</p>
+
+        <div class="max-w-4xl mx-auto p-6 space-y-6">
+            <!-- Date & Status Card -->
+            <div class="bg-white p-8 rounded-[2.5rem] border shadow-sm text-center relative overflow-hidden">
+                <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 to-emerald-500"></div>
+                <h2 id="current-date" class="text-4xl font-black tracking-tighter italic text-slate-900">00-00-00</h2>
+                <div class="flex items-center justify-center gap-2 mt-2">
+                    <div id="sync-dot" class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                    <span id="sync-status" class="text-[10px] font-black uppercase text-slate-400 tracking-widest">Live Sync Enabled</span>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- REVENUE SECTION -->
+                <div class="bg-white p-7 rounded-[2.5rem] border shadow-sm">
+                    <h3 class="font-black text-[11px] uppercase tracking-[0.2em] text-slate-400 mb-8 flex items-center gap-3">
+                        <span class="w-3 h-3 rounded-full bg-emerald-500 shadow-lg shadow-emerald-200"></span> Weekly Revenue
+                    </h3>
+                    <div id="income-list" class="space-y-3">
+                        <!-- Revenue items will be injected here -->
+                    </div>
+                </div>
+
+                <!-- EXPENSES SECTION -->
+                <div class="bg-white p-7 rounded-[2.5rem] border shadow-sm flex flex-col">
+                    <h3 class="font-black text-[11px] uppercase tracking-[0.2em] text-slate-400 mb-8 flex items-center gap-3">
+                        <span class="w-3 h-3 rounded-full bg-rose-500 shadow-lg shadow-rose-200"></span> Weekly Expenses
+                    </h3>
+                    <div id="expense-list" class="space-y-3 flex-1 min-h-[150px] overflow-y-auto custom-scroll max-h-[300px]">
+                        <!-- Expense items will be injected here -->
+                    </div>
+                    
+                    <div class="mt-8 pt-8 border-t space-y-3">
+                        <p class="text-[9px] font-black uppercase text-slate-400 mb-1">Log New Expense</p>
+                        <select id="exp-cat" class="w-full p-4 bg-slate-50 rounded-2xl text-xs font-bold border-2 border-transparent focus:border-indigo-500 outline-none">
+                            <option>Mortgage - Kirkland Group</option>
+                            <option>Pastor Payroll</option>
+                            <option>Lady Val Payroll</option>
+                            <option>Admin Payroll Taxes</option>
+                            <option>Band Payroll</option>
+                            <option>Utilities (Power/Gas/Water)</option>
+                            <option>Spectrum/TMobile</option>
+                            <option>Ministry Design</option>
+                            <option>Quickbooks</option>
+                            <option>GFL Environmental</option>
+                            <option>Other</option>
+                        </select>
+                        <div class="flex gap-2">
+                            <input id="exp-amt" type="number" step="0.01" placeholder="0.00" class="flex-1 p-4 bg-slate-50 rounded-2xl font-bold text-lg border-2 border-transparent focus:border-indigo-500 outline-none">
+                            <button onclick="addExpense()" class="bg-slate-900 text-white px-6 rounded-2xl font-black text-xl hover:bg-indigo-600 transition-all">+</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TOTAL BAR -->
+            <div id="footer-bar" class="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-4xl bg-slate-900 p-8 rounded-[3rem] text-white flex flex-col md:row justify-between items-center shadow-2xl gap-6 z-40 transition-all">
+                <div class="text-center md:text-left">
+                    <p class="text-[10px] font-black uppercase text-indigo-400 tracking-[0.3em] mb-1">Weekly Net Cash Flow</p>
+                    <p id="total-val" class="text-4xl font-black tracking-tighter italic text-emerald-400">$0.00</p>
+                </div>
+                <button onclick="sealReport()" id="seal-btn" class="w-full md:w-auto bg-white text-black px-10 py-4 rounded-[1.5rem] font-black uppercase text-xs tracking-widest hover:bg-emerald-500 hover:text-white transition-all">
+                    Finalize Week
+                </button>
+            </div>
         </div>
     </div>
 
     <script>
-        // ==========================================
-        // PASTE YOUR FIREBASE CONFIG BEYOND THIS LINE
-        // ==========================================
+        // --- FIREBASE CONFIG (WORKING VERSION) ---
         const config = {
             apiKey: "AIzaSyDb6oFZEStklFT_Dt2riDbQC_IJPHcT304",
-  authDomain: "church-finance-dashboard-40dca.firebaseapp.com",
-  projectId: "church-finance-dashboard-40dca",
-  storageBucket: "church-finance-dashboard-40dca.firebasestorage.app",
-  messagingSenderId: "480863076081",
-  appId: "1:480863076081:web:dd01f7270a7cd158f93350"
+            authDomain: "church-finance-dashboard-40dca.firebaseapp.com",
+            projectId: "church-finance-dashboard-40dca",
+            storageBucket: "church-finance-dashboard-40dca.firebasestorage.app",
+            messagingSenderId: "480863076081",
+            appId: "1:480863076081:web:dd01f7270a7cd158f93350"
         };
-        // ==========================================
 
         let db, auth;
-        let isBypassMode = false;
+        let currentData = { revenue: {}, expenses: [], status: 'open' };
+        const categories = ['Cash/Checks', 'Credit Card', 'Text', 'Givelify', 'Tithely', 'CashApp', 'Zelle', 'Website Giving'];
 
         window.onload = async () => {
-            const today = new Date();
-            document.getElementById('current-date').innerText = (today.getMonth()+1) + '-' + today.getDate() + '-' + today.getFullYear();
+            // Set Date (Last Tuesday Logic)
+            const d = new Date();
+            const day = d.getDay();
+            const diff = day >= 2 ? day - 2 : day + 5; 
+            const lastTuesday = new Date(d);
+            lastTuesday.setDate(d.getDate() - diff);
+            const dateStr = (lastTuesday.getMonth() + 1) + '-' + lastTuesday.getDate() + '-' + lastTuesday.getFullYear().toString().slice(-2);
+            document.getElementById('current-date').innerText = dateStr;
 
             try {
-                if (config.apiKey.includes("PASTE_YOUR")) throw new Error("auth/invalid-api-key");
                 firebase.initializeApp(config);
                 db = firebase.firestore();
                 auth = firebase.auth();
                 await auth.signInAnonymously();
             } catch (e) {
-                showError(e.message);
+                console.error("Firebase Connection Error:", e);
             }
         };
-
-        function showError(msg) {
-            document.getElementById('error-screen').classList.remove('hidden');
-            document.getElementById('error-msg').innerText = "Database Connection Failed: " + msg;
-        }
-
-        function bypassToLogin() {
-            isBypassMode = true;
-            document.getElementById('error-screen').classList.add('hidden');
-        }
 
         function handleLogin() {
             const id = document.getElementById('login-id').value;
@@ -106,8 +154,104 @@
             if (id === "voicessouth" && pw === "3894South") {
                 document.getElementById('login-screen').classList.add('hidden');
                 document.getElementById('dashboard-screen').classList.remove('hidden');
+                loadLiveData();
             } else {
-                alert("Incorrect credentials");
+                alert("Incorrect Credentials");
+            }
+        }
+
+        function loadLiveData() {
+            const dateId = document.getElementById('current-date').innerText;
+            // Path: reports/{dateId}
+            const docRef = db.collection('reports').doc(dateId);
+            
+            docRef.onSnapshot((doc) => {
+                if (doc.exists) {
+                    currentData = doc.data();
+                } else {
+                    // Reset if new week
+                    currentData = { revenue: {}, expenses: [], status: 'open' };
+                    categories.forEach(c => currentData.revenue[c] = 0);
+                }
+                renderUI();
+            });
+        }
+
+        function renderUI() {
+            const isLocked = currentData.status === 'submitted';
+            
+            // Render Revenue
+            const incList = document.getElementById('income-list');
+            incList.innerHTML = '';
+            let totalRev = 0;
+            categories.forEach(cat => {
+                const val = currentData.revenue[cat] || 0;
+                totalRev += parseFloat(val);
+                incList.innerHTML += `
+                    <div class="flex justify-between items-center bg-slate-50 p-4 rounded-2xl border border-slate-100 group transition-all">
+                        <span class="text-[10px] font-black uppercase text-slate-400">${cat}</span>
+                        <div class="flex items-center">
+                            <span class="text-xs font-bold text-slate-300 mr-1">$</span>
+                            <input type="number" value="${val}" ${isLocked ? 'disabled' : ''} onchange="updateRev('${cat}', this.value)" 
+                                class="w-24 text-right bg-transparent font-black text-sm outline-none" placeholder="0.00">
+                        </div>
+                    </div>
+                `;
+            });
+
+            // Render Expenses
+            const expList = document.getElementById('expense-list');
+            expList.innerHTML = '';
+            let totalExp = 0;
+            (currentData.expenses || []).forEach((exp, i) => {
+                totalExp += parseFloat(exp.amount || 0);
+                expList.innerHTML += `
+                    <div class="flex justify-between items-center p-4 bg-rose-50/50 rounded-2xl border border-rose-100">
+                        <span class="text-[10px] font-black uppercase text-slate-600">${exp.category}</span>
+                        <span class="text-sm font-black text-rose-600">-$${parseFloat(exp.amount).toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                    </div>
+                `;
+            });
+
+            // Totals
+            const net = totalRev - totalExp;
+            const totalEl = document.getElementById('total-val');
+            totalEl.innerText = (net < 0 ? '-' : '') + '$' + Math.abs(net).toLocaleString(undefined, {minimumFractionDigits: 2});
+            totalEl.className = `text-4xl font-black tracking-tighter italic ${net < 0 ? 'text-rose-500' : 'text-emerald-400'}`;
+
+            if (isLocked) {
+                document.getElementById('seal-btn').innerText = "LOCKED";
+                document.getElementById('seal-btn').disabled = true;
+                document.getElementById('seal-btn').className = "w-full md:w-auto bg-slate-800 text-slate-500 px-10 py-4 rounded-[1.5rem] font-black uppercase text-xs tracking-widest cursor-not-allowed";
+                document.getElementById('sync-status').innerText = "REPORT FINALIZED";
+                document.getElementById('sync-dot').classList.remove('animate-pulse');
+                document.getElementById('sync-dot').classList.replace('bg-emerald-500', 'bg-rose-500');
+            }
+        }
+
+        async function updateRev(cat, val) {
+            currentData.revenue[cat] = val;
+            save();
+        }
+
+        async function addExpense() {
+            const cat = document.getElementById('exp-cat').value;
+            const amt = document.getElementById('exp-amt').value;
+            if(!amt || currentData.status === 'submitted') return;
+            currentData.expenses.unshift({ category: cat, amount: amt });
+            document.getElementById('exp-amt').value = '';
+            save();
+        }
+
+        async function save() {
+            const dateId = document.getElementById('current-date').innerText;
+            await db.collection('reports').doc(dateId).set(currentData);
+        }
+
+        function sealReport() {
+            if(confirm("Are you sure you want to finalize this week's financials? This will lock all entries.")) {
+                currentData.status = 'submitted';
+                save();
             }
         }
     </script>

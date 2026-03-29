@@ -16,7 +16,6 @@
         .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
         input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
         
-        /* Modern Input Styling */
         .income-input {
             width: 100%;
             text-align: right;
@@ -31,6 +30,10 @@
             opacity: 0.6;
             cursor: not-allowed;
         }
+        .day-tab.active {
+            background-color: #1e293b;
+            color: white;
+        }
     </style>
 </head>
 <body class="min-h-screen">
@@ -43,7 +46,7 @@
                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                 </div>
                 <h1 class="text-2xl font-black uppercase tracking-tighter text-slate-900">Voices South</h1>
-                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Financial Portal v2.6</p>
+                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Financial Portal v3.0</p>
             </div>
             <div class="space-y-4">
                 <input id="login-id" type="text" placeholder="Admin ID" class="w-full px-5 py-4 bg-slate-100 rounded-xl font-bold border-2 border-transparent focus:border-indigo-500 transition-all outline-none">
@@ -83,45 +86,26 @@
             </div>
 
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <!-- REVENUE ENTRY (STATIC LIST TO ENSURE VISIBILITY) -->
-                <div class="bg-white p-7 rounded-[2.5rem] border shadow-sm">
-                    <h3 class="font-black text-[11px] uppercase tracking-[0.2em] text-slate-400 mb-6 flex items-center gap-3">
+                <!-- REVENUE ENTRY -->
+                <div class="bg-white p-7 rounded-[2.5rem] border shadow-sm flex flex-col">
+                    <h3 class="font-black text-[11px] uppercase tracking-[0.2em] text-slate-400 mb-4 flex items-center gap-3">
                         <span class="w-3 h-3 rounded-full bg-emerald-500 shadow-lg shadow-emerald-200"></span> Weekly Income
                     </h3>
-                    <div id="income-grid" class="space-y-3">
-                        <!-- Sunday Offering -->
-                        <div class="flex justify-between items-center bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                            <span class="text-[10px] font-black uppercase text-slate-500">Sun Offering</span>
-                            <div class="flex items-center w-32">
-                                <span class="text-xs font-bold text-slate-300 mr-1">$</span>
-                                <input type="number" id="in-sun_offering" step="0.01" class="income-input" onchange="updateRevenue('sun_offering', this.value)">
-                            </div>
-                        </div>
-                        <!-- Tuesday Offering -->
-                        <div class="flex justify-between items-center bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                            <span class="text-[10px] font-black uppercase text-slate-500">Tue Offering</span>
-                            <div class="flex items-center w-32">
-                                <span class="text-xs font-bold text-slate-300 mr-1">$</span>
-                                <input type="number" id="in-tue_offering" step="0.01" class="income-input" onchange="updateRevenue('tue_offering', this.value)">
-                            </div>
-                        </div>
-                        <!-- End of Week -->
-                        <div class="flex justify-between items-center bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                            <span class="text-[10px] font-black uppercase text-slate-500">End of Week</span>
-                            <div class="flex items-center w-32">
-                                <span class="text-xs font-bold text-slate-300 mr-1">$</span>
-                                <input type="number" id="in-eow_total" step="0.01" class="income-input" onchange="updateRevenue('eow_total', this.value)">
-                            </div>
-                        </div>
-                        <!-- End of Month -->
-                        <div class="flex justify-between items-center bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                            <span class="text-[10px] font-black uppercase text-slate-500">End of Month</span>
-                            <div class="flex items-center w-32">
-                                <span class="text-xs font-bold text-slate-300 mr-1">$</span>
-                                <input type="number" id="in-eom_total" step="0.01" class="income-input" onchange="updateRevenue('eom_total', this.value)">
-                            </div>
-                        </div>
-                        <!-- Bank Balance -->
+                    
+                    <!-- Day Selector Tabs -->
+                    <div class="flex flex-wrap gap-2 mb-6">
+                        <button onclick="setActiveDay('sun')" id="tab-sun" class="day-tab px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-slate-100 text-slate-400 transition-all active">Sun</button>
+                        <button onclick="setActiveDay('tue')" id="tab-tue" class="day-tab px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-slate-100 text-slate-400 transition-all">Tue</button>
+                        <button onclick="setActiveDay('eow')" id="tab-eow" class="day-tab px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-slate-100 text-slate-400 transition-all">End Week</button>
+                        <button onclick="setActiveDay('eom')" id="tab-eom" class="day-tab px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-slate-100 text-slate-400 transition-all">End Month</button>
+                    </div>
+
+                    <div id="income-grid" class="space-y-3 flex-1">
+                        <!-- Dynamic content via JS -->
+                    </div>
+
+                    <!-- Global Bank Balance -->
+                    <div class="mt-6 pt-6 border-t">
                         <div class="flex justify-between items-center bg-indigo-50 p-4 rounded-2xl border border-indigo-100">
                             <span class="text-[10px] font-black uppercase text-indigo-500">Bank Balance</span>
                             <div class="flex items-center w-32">
@@ -196,13 +180,17 @@
             appId: "1:480863076081:web:dd01f7270a7cd158f93350"
         };
 
+        const INCOME_CATEGORIES = [
+            'Cash/Checks', 'Credit/Debit cards', 'Text', 'Givelify', 'Tithely', 'CashApp', 'Zelle', 'Website giving'
+        ];
+
         const appId = "church-finance-dashboard-40dca";
         let db, auth;
         let currentDate = new Date();
+        let activeDay = 'sun'; // Current selected giving day tab
         let currentData = { revenue: {}, expenses: [], status: 'open' };
 
         window.onload = async () => {
-            // Default to current Tuesday logic
             const day = currentDate.getDay();
             const diff = day >= 2 ? day - 2 : day + 5; 
             currentDate.setDate(currentDate.getDate() - diff);
@@ -229,6 +217,13 @@
             loadWeekData();
         }
 
+        function setActiveDay(day) {
+            activeDay = day;
+            document.querySelectorAll('.day-tab').forEach(t => t.classList.remove('active'));
+            document.getElementById('tab-' + day).classList.add('active');
+            updateUI();
+        }
+
         let unsubscribe = null;
         function loadWeekData() {
             const dateStr = (currentDate.getMonth() + 1) + '-' + currentDate.getDate() + '-' + currentDate.getFullYear().toString().slice(-2);
@@ -250,26 +245,49 @@
 
         function updateUI() {
             const isLocked = currentData.status === 'submitted';
-            
-            // Set values in Revenue Inputs
-            ['sun_offering', 'tue_offering', 'eow_total', 'eom_total', 'bank_balance'].forEach(id => {
-                const el = document.getElementById('in-' + id);
-                el.value = currentData.revenue?.[id] || '';
-                el.disabled = isLocked;
-                if(isLocked) el.classList.add('locked-input');
-                else el.classList.remove('locked-input');
+            const grid = document.getElementById('income-grid');
+            grid.innerHTML = '';
+
+            // Render Income Categories for the ACTIVE giving day
+            INCOME_CATEGORIES.forEach(cat => {
+                const storageKey = `${activeDay}_${cat.replace(/\s+/g, '_').toLowerCase()}`;
+                const val = currentData.revenue?.[storageKey] || '';
+                
+                grid.innerHTML += `
+                    <div class="flex justify-between items-center bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                        <span class="text-[10px] font-black uppercase text-slate-500">${cat}</span>
+                        <div class="flex items-center w-32">
+                            <span class="text-xs font-bold text-slate-300 mr-1">$</span>
+                            <input type="number" step="0.01" 
+                                class="income-input ${isLocked ? 'locked-input' : ''}" 
+                                ${isLocked ? 'disabled' : ''}
+                                value="${val}"
+                                onchange="updateRevenue('${storageKey}', this.value)">
+                        </div>
+                    </div>
+                `;
             });
 
-            // Handle Expenses
+            // Set Bank Balance separately
+            const bbInput = document.getElementById('in-bank_balance');
+            bbInput.value = currentData.revenue?.bank_balance || '';
+            bbInput.disabled = isLocked;
+            isLocked ? bbInput.classList.add('locked-input') : bbInput.classList.remove('locked-input');
+
+            // Handle Expenses List
             const list = document.getElementById('expense-list');
             list.innerHTML = '';
             let totalOut = 0;
             let totalIn = 0;
 
-            // Calc Total Income
-            ['sun_offering', 'tue_offering', 'eow_total', 'eom_total'].forEach(id => {
-                totalIn += parseFloat(currentData.revenue?.[id] || 0);
-            });
+            // Calculate total income from ALL days and ALL categories
+            if (currentData.revenue) {
+                Object.keys(currentData.revenue).forEach(key => {
+                    if (key !== 'bank_balance') {
+                        totalIn += parseFloat(currentData.revenue[key] || 0);
+                    }
+                });
+            }
 
             (currentData.expenses || []).forEach((exp, i) => {
                 totalOut += parseFloat(exp.amount || 0);
@@ -290,18 +308,16 @@
                 list.innerHTML = `<p class="text-center py-6 text-[10px] font-bold text-slate-300 uppercase italic">No transactions</p>`;
             }
 
-            // Totals
+            // Calculations
             const net = totalIn - totalOut;
             const totalEl = document.getElementById('total-val');
             totalEl.innerText = (net < 0 ? '-' : '') + '$' + Math.abs(net).toLocaleString(undefined, {minimumFractionDigits: 2});
             totalEl.className = `text-4xl font-black tracking-tighter italic ${net < 0 ? 'text-rose-500' : 'text-emerald-400'}`;
 
-            // Finalize Button
             const sealBtn = document.getElementById('seal-btn');
             sealBtn.innerText = isLocked ? "Week Sealed" : "Finalize Week";
             sealBtn.disabled = isLocked;
             
-            // Lock UI elements
             document.getElementById('exp-cat').disabled = isLocked;
             document.getElementById('exp-amt').disabled = isLocked;
             document.getElementById('add-exp-btn').disabled = isLocked;

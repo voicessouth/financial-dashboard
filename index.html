@@ -44,7 +44,6 @@
             box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.04);
         }
         
-        /* Smooth transition for the details box */
         #misc-details-container {
             transition: all 0.3s ease-in-out;
             max-height: 0;
@@ -141,7 +140,6 @@
 
                 <!-- EXPENSE SECTION -->
                 <div class="space-y-6 flex flex-col">
-                    <!-- ADD EXPENSE -->
                     <div class="glass-card p-8">
                         <h3 class="font-black text-[11px] uppercase tracking-[0.2em] text-slate-400 mb-6 flex items-center gap-2">
                             <span class="w-2 h-2 rounded-full bg-rose-500"></span> Log Expense
@@ -164,32 +162,27 @@
                                 <option>Other/Misc</option>
                             </select>
                             
-                            <!-- Hidden Details Input for Other/Misc -->
                             <div id="misc-details-container">
                                 <input id="exp-details" type="text" placeholder="Specify expense reason..." class="w-full p-4 bg-slate-50 rounded-2xl text-[11px] font-bold border-2 border-slate-200 focus:border-slate-900 outline-none">
                             </div>
 
                             <div class="flex gap-2">
                                 <input id="exp-amt" type="number" step="0.01" placeholder="0.00" class="flex-1 p-4 bg-slate-50 rounded-2xl font-black text-xl border-2 border-transparent focus:border-slate-900 outline-none">
-                                <button onclick="addExpense()" class="bg-slate-900 text-white px-8 rounded-2xl font-black text-2xl hover:bg-slate-800 active:scale-95 transition-all shadow-xl">+</button>
+                                <button onclick="addExpense()" id="add-exp-btn" class="bg-slate-900 text-white px-8 rounded-2xl font-black text-2xl hover:bg-slate-800 active:scale-95 transition-all shadow-xl">+</button>
                             </div>
                         </div>
                     </div>
 
-                    <!-- EXPENSE LIST -->
                     <div class="glass-card p-8 flex-1 flex flex-col min-h-[350px]">
                         <div class="flex justify-between items-center mb-6">
                             <h3 class="font-black text-[11px] uppercase tracking-[0.2em] text-slate-400">Weekly Log</h3>
                             <span id="exp-total-badge" class="text-[10px] font-black text-rose-500 bg-rose-50 px-3 py-1 rounded-full">$0.00 OUT</span>
                         </div>
-                        <div id="expense-list" class="space-y-2 overflow-y-auto custom-scroll flex-1 pr-2 max-h-[400px]">
-                            <!-- List will populate here -->
-                        </div>
+                        <div id="expense-list" class="space-y-2 overflow-y-auto custom-scroll flex-1 pr-2 max-h-[400px]"></div>
                     </div>
                 </div>
             </div>
 
-            <!-- FLOATING ACTION FOOTER -->
             <div class="fixed bottom-8 left-1/2 -translate-x-1/2 w-[90%] max-w-4xl bg-slate-900 p-8 rounded-[2.5rem] text-white flex flex-col md:flex-row justify-between items-center shadow-2xl gap-6 z-40">
                 <div class="text-center md:text-left flex-1">
                     <p class="text-[9px] font-black uppercase text-slate-500 tracking-[0.4em] mb-1">Weekly Cash Flow (Net Sum)</p>
@@ -232,6 +225,7 @@
             auth = firebase.auth();
             await auth.signInAnonymously();
             
+            // Adjust current date to today's relative week ending if needed
             const now = new Date();
             if (now > currentDate) {
                 const diff = now.getTime() - currentDate.getTime();
@@ -252,24 +246,30 @@
             }
         }
 
-        // --- NEW LOGIC FOR OTHER/MISC ---
         function handleCategoryChange() {
             const cat = document.getElementById('exp-cat').value;
             const container = document.getElementById('misc-details-container');
-            const detailsInput = document.getElementById('exp-details');
-            
             if (cat === "Other/Misc") {
                 container.classList.add('show');
-                detailsInput.focus();
             } else {
                 container.classList.remove('show');
-                detailsInput.value = ''; // Reset when not in use
             }
         }
 
         function changeDate(days) {
             currentDate.setDate(currentDate.getDate() + days);
+            // Reset state before loading new date to prevent data bleeding
+            resetLocalState();
             loadWeekData();
+        }
+
+        function resetLocalState() {
+            currentData = { revenue: {}, expenses: [], status: 'open' };
+            document.getElementById('in-bank_balance').value = '';
+            document.getElementById('exp-amt').value = '';
+            document.getElementById('exp-details').value = '';
+            document.getElementById('exp-cat').selectedIndex = 0;
+            handleCategoryChange();
         }
 
         function setActiveDay(day) {
@@ -292,7 +292,9 @@
                 if (doc.exists) {
                     currentData = doc.data();
                     if (!currentData.expenses) currentData.expenses = [];
+                    if (!currentData.revenue) currentData.revenue = {};
                 } else {
+                    // Start fresh for new dates
                     currentData = { revenue: {}, expenses: [], status: 'open' };
                 }
                 updateUI();
@@ -304,7 +306,13 @@
         function updateUI() {
             const isLocked = currentData.status === 'submitted';
             
-            // 1. Update Revenue List
+            // UI elements update based on locked state
+            document.getElementById('add-exp-btn').disabled = isLocked;
+            document.getElementById('add-exp-btn').style.opacity = isLocked ? '0.3' : '1';
+            document.getElementById('exp-cat').disabled = isLocked;
+            document.getElementById('exp-amt').disabled = isLocked;
+            document.getElementById('exp-details').disabled = isLocked;
+
             const grid = document.getElementById('income-grid');
             grid.innerHTML = '';
             INCOME_CATEGORIES.forEach(cat => {
@@ -330,7 +338,6 @@
             document.getElementById('in-bank_balance').value = currentData.revenue?.bank_balance || '';
             document.getElementById('in-bank_balance').disabled = isLocked;
 
-            // 2. Update Expense List
             const list = document.getElementById('expense-list');
             list.innerHTML = '';
             let totalOut = 0;
@@ -346,12 +353,9 @@
                 expenses.forEach((exp, i) => {
                     const amt = parseFloat(exp.amount || 0);
                     totalOut += amt;
-                    
-                    // Format category name if it has details
                     const displayName = exp.details ? `${exp.category}: ${exp.details}` : exp.category;
-                    
                     list.innerHTML += `
-                        <div class="flex justify-between items-center p-4 bg-slate-50 rounded-2xl border border-slate-100 hover:border-slate-200 transition-all">
+                        <div class="flex justify-between items-center p-4 bg-slate-50 rounded-2xl border border-slate-100">
                             <div class="flex items-center gap-3">
                                 <div class="w-8 h-8 rounded-lg bg-rose-50 flex items-center justify-center text-rose-500">
                                     <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="M19 14l-7 7-7-7"/></svg>
@@ -372,7 +376,6 @@
                 });
             }
 
-            // 3. Totals Calculation
             let totalIn = 0;
             if (currentData.revenue) {
                 Object.keys(currentData.revenue).forEach(key => {
@@ -391,7 +394,7 @@
             const sealBtn = document.getElementById('seal-btn');
             sealBtn.innerText = isLocked ? "Week Sealed" : "Finalize Week";
             sealBtn.disabled = isLocked;
-            if(isLocked) sealBtn.classList.add('opacity-40');
+            sealBtn.style.opacity = isLocked ? '0.4' : '1';
         }
 
         async function updateRevenue(fieldId, val) {
@@ -405,31 +408,18 @@
             const details = document.getElementById('exp-details').value;
             const amtInput = document.getElementById('exp-amt');
             const amt = amtInput.value;
-            
             if(!amt || isNaN(parseFloat(amt))) return;
-            
-            // Require details if Other/Misc is selected
             if (cat === "Other/Misc" && !details.trim()) {
                 alert("Please specify the reason for 'Other/Misc' expense.");
                 document.getElementById('exp-details').focus();
                 return;
             }
-
             if (!Array.isArray(currentData.expenses)) currentData.expenses = [];
-            
-            currentData.expenses.unshift({ 
-                category: cat, 
-                details: details.trim(),
-                amount: parseFloat(amt),
-                id: Date.now() 
-            });
-            
-            // Reset fields
+            currentData.expenses.unshift({ category: cat, details: details.trim(), amount: parseFloat(amt), id: Date.now() });
             amtInput.value = '';
             document.getElementById('exp-details').value = '';
             document.getElementById('exp-cat').selectedIndex = 0;
-            handleCategoryChange(); // Hide details box
-
+            handleCategoryChange();
             updateUI();
             save();
         }

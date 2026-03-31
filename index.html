@@ -21,18 +21,29 @@
             text-align: right;
             background: transparent;
             font-weight: 900;
-            font-size: 1rem;
+            font-size: 1.1rem;
             outline: none;
             border: none;
             color: #0f172a;
+            padding: 4px 0;
         }
         .locked-input {
             opacity: 0.6;
             cursor: not-allowed;
         }
+        .day-tab {
+            transition: all 0.2s ease;
+            border: 2px solid transparent;
+        }
         .day-tab.active {
             background-color: #1e293b;
             color: white;
+            border-color: #1e293b;
+        }
+        .day-tab:not(.active) {
+            background-color: white;
+            color: #64748b;
+            border-color: #e2e8f0;
         }
     </style>
 </head>
@@ -46,7 +57,7 @@
                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                 </div>
                 <h1 class="text-2xl font-black uppercase tracking-tighter text-slate-900">Voices South</h1>
-                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Financial Portal v3.0</p>
+                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Financial Portal v3.1</p>
             </div>
             <div class="space-y-4">
                 <input id="login-id" type="text" placeholder="Admin ID" class="w-full px-5 py-4 bg-slate-100 rounded-xl font-bold border-2 border-transparent focus:border-indigo-500 transition-all outline-none">
@@ -67,7 +78,7 @@
         </nav>
 
         <div class="max-w-5xl mx-auto p-6 space-y-6">
-            <!-- Date Navigation Header -->
+            <!-- Date Navigation -->
             <div class="bg-white p-8 rounded-[2.5rem] border shadow-sm text-center relative overflow-hidden">
                 <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 to-emerald-500"></div>
                 <div class="flex items-center justify-between max-w-xs mx-auto mb-2">
@@ -88,28 +99,31 @@
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <!-- REVENUE ENTRY -->
                 <div class="bg-white p-7 rounded-[2.5rem] border shadow-sm flex flex-col">
-                    <h3 class="font-black text-[11px] uppercase tracking-[0.2em] text-slate-400 mb-4 flex items-center gap-3">
-                        <span class="w-3 h-3 rounded-full bg-emerald-500 shadow-lg shadow-emerald-200"></span> Weekly Income
+                    <h3 class="font-black text-[11px] uppercase tracking-[0.2em] text-slate-400 mb-6 flex items-center gap-3">
+                        <span class="w-3 h-3 rounded-full bg-emerald-500 shadow-lg shadow-emerald-200"></span> Weekly Income Entry
                     </h3>
                     
                     <!-- Day Selector Tabs -->
-                    <div class="flex flex-wrap gap-2 mb-6">
-                        <button onclick="setActiveDay('sun')" id="tab-sun" class="day-tab px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-slate-100 text-slate-400 transition-all active">Sun</button>
-                        <button onclick="setActiveDay('tue')" id="tab-tue" class="day-tab px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-slate-100 text-slate-400 transition-all">Tue</button>
-                        <button onclick="setActiveDay('eow')" id="tab-eow" class="day-tab px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-slate-100 text-slate-400 transition-all">End Week</button>
-                        <button onclick="setActiveDay('eom')" id="tab-eom" class="day-tab px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-slate-100 text-slate-400 transition-all">End Month</button>
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-8">
+                        <button onclick="setActiveDay('sun')" id="tab-sun" class="day-tab px-3 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest active">Sun</button>
+                        <button onclick="setActiveDay('tue')" id="tab-tue" class="day-tab px-3 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest">Tue</button>
+                        <button onclick="setActiveDay('eow')" id="tab-eow" class="day-tab px-3 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest leading-tight">End Week</button>
+                        <button onclick="setActiveDay('eom')" id="tab-eom" class="day-tab px-3 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest leading-tight">End Month</button>
                     </div>
 
-                    <div id="income-grid" class="space-y-3 flex-1">
+                    <div id="income-grid" class="space-y-4 flex-1">
                         <!-- Dynamic content via JS -->
                     </div>
 
                     <!-- Global Bank Balance -->
-                    <div class="mt-6 pt-6 border-t">
-                        <div class="flex justify-between items-center bg-indigo-50 p-4 rounded-2xl border border-indigo-100">
-                            <span class="text-[10px] font-black uppercase text-indigo-500">Bank Balance</span>
+                    <div class="mt-8 pt-6 border-t border-slate-100">
+                        <div class="flex justify-between items-center bg-indigo-50 p-5 rounded-3xl border border-indigo-100">
+                            <div>
+                                <span class="text-[10px] font-black uppercase text-indigo-500 block">Bank Balance</span>
+                                <span class="text-[9px] text-indigo-300 uppercase font-bold">Closing Statement</span>
+                            </div>
                             <div class="flex items-center w-32">
-                                <span class="text-xs font-bold text-indigo-300 mr-1">$</span>
+                                <span class="text-sm font-bold text-indigo-300 mr-1">$</span>
                                 <input type="number" id="in-bank_balance" step="0.01" class="income-input text-indigo-700" onchange="updateRevenue('bank_balance', this.value)">
                             </div>
                         </div>
@@ -141,13 +155,16 @@
                             </select>
                             <div class="flex gap-2">
                                 <input id="exp-amt" type="number" step="0.01" placeholder="Amount" class="flex-1 p-4 bg-slate-50 rounded-2xl font-bold text-lg border-2 border-transparent focus:border-indigo-500 outline-none">
-                                <button onclick="addExpense()" id="add-exp-btn" class="bg-slate-900 text-white px-8 rounded-2xl font-black text-xl hover:bg-indigo-600 transition-all">+</button>
+                                <button onclick="addExpense()" id="add-exp-btn" class="bg-slate-900 text-white px-8 rounded-2xl font-black text-xl hover:bg-indigo-600 transition-all shadow-lg">+</button>
                             </div>
                         </div>
                     </div>
 
                     <div class="bg-white p-7 rounded-[2.5rem] border shadow-sm">
-                        <h3 class="font-black text-[11px] uppercase tracking-[0.2em] text-slate-400 mb-4">Transaction History</h3>
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="font-black text-[11px] uppercase tracking-[0.2em] text-slate-400">Weekly Log</h3>
+                            <span id="exp-total-badge" class="text-[10px] font-black text-rose-500 bg-rose-50 px-3 py-1 rounded-full">$0.00 OUT</span>
+                        </div>
                         <div id="expense-list" class="space-y-2 max-h-[300px] overflow-y-auto custom-scroll pr-2">
                             <!-- Transactions appear here -->
                         </div>
@@ -156,12 +173,16 @@
             </div>
 
             <!-- FOOTER TOTALS -->
-            <div class="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-4xl bg-slate-900 p-8 rounded-[3rem] text-white flex flex-col md:flex-row justify-between items-center shadow-2xl gap-6 z-40">
+            <div class="fixed bottom-6 left-1/2 -translate-x-1/2 w-[95%] max-w-4xl bg-slate-900 p-8 rounded-[3rem] text-white flex flex-col md:flex-row justify-between items-center shadow-2xl gap-6 z-40">
                 <div class="text-center md:text-left flex-1">
-                    <p class="text-[10px] font-black uppercase text-indigo-400 tracking-[0.3em] mb-1">Weekly Cash Flow</p>
+                    <p class="text-[10px] font-black uppercase text-slate-400 tracking-[0.3em] mb-1">Weekly Cash Flow (All Days)</p>
                     <p id="total-val" class="text-4xl font-black tracking-tighter italic text-emerald-400">$0.00</p>
                 </div>
-                <div class="flex flex-col items-center md:items-end gap-1">
+                <div class="flex items-center gap-4">
+                    <div class="text-right hidden md:block mr-4">
+                        <p class="text-[9px] font-black uppercase text-slate-500 tracking-widest">Total Revenue</p>
+                        <p id="total-revenue-sum" class="text-lg font-bold text-emerald-400">$0.00</p>
+                    </div>
                     <button onclick="sealReport()" id="seal-btn" class="bg-white text-black px-10 py-4 rounded-[1.5rem] font-black uppercase text-xs tracking-widest hover:bg-emerald-500 hover:text-white transition-all">
                         Finalize Week
                     </button>
@@ -181,13 +202,20 @@
         };
 
         const INCOME_CATEGORIES = [
-            'Cash/Checks', 'Credit/Debit cards', 'Text', 'Givelify', 'Tithely', 'CashApp', 'Zelle', 'Website giving'
+            'Cash/Checks', 
+            'Credit/Debit cards', 
+            'Text', 
+            'Givelify', 
+            'Tithely', 
+            'CashApp', 
+            'Zelle', 
+            'Website giving'
         ];
 
         const appId = "church-finance-dashboard-40dca";
         let db, auth;
         let currentDate = new Date();
-        let activeDay = 'sun'; // Current selected giving day tab
+        let activeDay = 'sun';
         let currentData = { revenue: {}, expenses: [], status: 'open' };
 
         window.onload = async () => {
@@ -250,18 +278,22 @@
 
             // Render Income Categories for the ACTIVE giving day
             INCOME_CATEGORIES.forEach(cat => {
-                const storageKey = `${activeDay}_${cat.replace(/\s+/g, '_').toLowerCase()}`;
+                const storageKey = `${activeDay}_${cat.replace(/[\/\s]+/g, '_').toLowerCase()}`;
                 const val = currentData.revenue?.[storageKey] || '';
                 
                 grid.innerHTML += `
-                    <div class="flex justify-between items-center bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                        <span class="text-[10px] font-black uppercase text-slate-500">${cat}</span>
-                        <div class="flex items-center w-32">
-                            <span class="text-xs font-bold text-slate-300 mr-1">$</span>
+                    <div class="flex justify-between items-center bg-slate-50 p-4 rounded-2xl border border-slate-100 group hover:border-indigo-200 transition-colors">
+                        <div>
+                            <span class="text-[10px] font-black uppercase text-slate-400 block tracking-wider">${cat}</span>
+                            <span class="text-[8px] font-bold text-indigo-400 uppercase">${activeDay} Giving</span>
+                        </div>
+                        <div class="flex items-center w-36">
+                            <span class="text-sm font-bold text-slate-300 mr-2">$</span>
                             <input type="number" step="0.01" 
                                 class="income-input ${isLocked ? 'locked-input' : ''}" 
                                 ${isLocked ? 'disabled' : ''}
                                 value="${val}"
+                                placeholder="0.00"
                                 onchange="updateRevenue('${storageKey}', this.value)">
                         </div>
                     </div>
@@ -274,17 +306,18 @@
             bbInput.disabled = isLocked;
             isLocked ? bbInput.classList.add('locked-input') : bbInput.classList.remove('locked-input');
 
-            // Handle Expenses List
+            // Handle Expenses List & Overall Totals
             const list = document.getElementById('expense-list');
             list.innerHTML = '';
             let totalOut = 0;
             let totalIn = 0;
 
-            // Calculate total income from ALL days and ALL categories
+            // Calculate total income from ALL days and ALL categories in currentData.revenue
             if (currentData.revenue) {
                 Object.keys(currentData.revenue).forEach(key => {
-                    if (key !== 'bank_balance') {
-                        totalIn += parseFloat(currentData.revenue[key] || 0);
+                    // Make sure we don't count the bank balance in the "Income" total
+                    if (key !== 'bank_balance' && !isNaN(parseFloat(currentData.revenue[key]))) {
+                        totalIn += parseFloat(currentData.revenue[key]);
                     }
                 });
             }
@@ -297,26 +330,30 @@
                             <p class="text-[10px] font-black uppercase text-slate-400 leading-tight">${exp.category}</p>
                             <p class="text-xs font-bold text-rose-500">-$${parseFloat(exp.amount).toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
                         </div>
-                        <button onclick="removeExpense(${i})" ${isLocked ? 'disabled' : ''} class="${isLocked ? 'hidden' : ''} text-rose-300 hover:text-rose-600 transition-all">
-                            <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                        <button onclick="removeExpense(${i})" ${isLocked ? 'disabled' : ''} class="${isLocked ? 'hidden' : ''} text-slate-300 hover:text-rose-600 transition-all p-2">
+                            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
                         </button>
                     </div>
                 `;
             });
 
             if(!currentData.expenses?.length) {
-                list.innerHTML = `<p class="text-center py-6 text-[10px] font-bold text-slate-300 uppercase italic">No transactions</p>`;
+                list.innerHTML = `<p class="text-center py-6 text-[10px] font-bold text-slate-300 uppercase italic">No expenses logged</p>`;
             }
 
-            // Calculations
+            // Calculations for Footer
             const net = totalIn - totalOut;
+            document.getElementById('exp-total-badge').innerText = `$${totalOut.toLocaleString(undefined, {minimumFractionDigits: 2})} OUT`;
+            document.getElementById('total-revenue-sum').innerText = `$${totalIn.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+            
             const totalEl = document.getElementById('total-val');
             totalEl.innerText = (net < 0 ? '-' : '') + '$' + Math.abs(net).toLocaleString(undefined, {minimumFractionDigits: 2});
             totalEl.className = `text-4xl font-black tracking-tighter italic ${net < 0 ? 'text-rose-500' : 'text-emerald-400'}`;
 
             const sealBtn = document.getElementById('seal-btn');
-            sealBtn.innerText = isLocked ? "Week Sealed" : "Finalize Week";
+            sealBtn.innerText = isLocked ? "Report Sealed" : "Finalize Week";
             sealBtn.disabled = isLocked;
+            if(isLocked) sealBtn.classList.add('opacity-50');
             
             document.getElementById('exp-cat').disabled = isLocked;
             document.getElementById('exp-amt').disabled = isLocked;
@@ -334,9 +371,9 @@
         async function addExpense() {
             const cat = document.getElementById('exp-cat').value;
             const amt = document.getElementById('exp-amt').value;
-            if(!amt) return;
+            if(!amt || isNaN(parseFloat(amt))) return;
             if (!currentData.expenses) currentData.expenses = [];
-            currentData.expenses.unshift({ category: cat, amount: amt });
+            currentData.expenses.unshift({ category: cat, amount: parseFloat(amt) });
             document.getElementById('exp-amt').value = '';
             save();
         }
@@ -353,7 +390,7 @@
         }
 
         function sealReport() {
-            if(confirm("Seal this week permanently?")) {
+            if(confirm("Are you sure you want to seal this week's report? This will disable further editing.")) {
                 currentData.status = 'submitted';
                 save();
             }

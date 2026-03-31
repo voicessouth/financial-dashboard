@@ -43,6 +43,20 @@
             border: 1px solid rgba(226, 232, 240, 0.8);
             box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.04);
         }
+        
+        /* Smooth transition for the details box */
+        #misc-details-container {
+            transition: all 0.3s ease-in-out;
+            max-height: 0;
+            opacity: 0;
+            overflow: hidden;
+            margin-bottom: 0;
+        }
+        #misc-details-container.show {
+            max-height: 100px;
+            opacity: 1;
+            margin-bottom: 0.75rem;
+        }
     </style>
 </head>
 <body class="min-h-screen">
@@ -133,7 +147,7 @@
                             <span class="w-2 h-2 rounded-full bg-rose-500"></span> Log Expense
                         </h3>
                         <div class="space-y-3">
-                            <select id="exp-cat" class="w-full p-4 bg-slate-50 rounded-2xl text-[11px] font-black uppercase tracking-wider border-2 border-transparent focus:border-slate-900 outline-none appearance-none">
+                            <select id="exp-cat" onchange="handleCategoryChange()" class="w-full p-4 bg-slate-50 rounded-2xl text-[11px] font-black uppercase tracking-wider border-2 border-transparent focus:border-slate-900 outline-none appearance-none">
                                 <option>Mortgage - Kirkland Group</option>
                                 <option>Pastor Payroll</option>
                                 <option>Lady Val Payroll</option>
@@ -149,6 +163,12 @@
                                 <option>GFL Environmental</option>
                                 <option>Other/Misc</option>
                             </select>
+                            
+                            <!-- Hidden Details Input for Other/Misc -->
+                            <div id="misc-details-container">
+                                <input id="exp-details" type="text" placeholder="Specify expense reason..." class="w-full p-4 bg-slate-50 rounded-2xl text-[11px] font-bold border-2 border-slate-200 focus:border-slate-900 outline-none">
+                            </div>
+
                             <div class="flex gap-2">
                                 <input id="exp-amt" type="number" step="0.01" placeholder="0.00" class="flex-1 p-4 bg-slate-50 rounded-2xl font-black text-xl border-2 border-transparent focus:border-slate-900 outline-none">
                                 <button onclick="addExpense()" class="bg-slate-900 text-white px-8 rounded-2xl font-black text-2xl hover:bg-slate-800 active:scale-95 transition-all shadow-xl">+</button>
@@ -218,7 +238,6 @@
                 const weeks = Math.floor(diff / (1000 * 3600 * 24 * 7));
                 currentDate.setDate(currentDate.getDate() + (weeks * 7));
             }
-            // Auto login for development preview if needed, or wait for click
         };
 
         function handleLogin() {
@@ -230,6 +249,21 @@
                 loadWeekData();
             } else {
                 alert("Invalid Credentials");
+            }
+        }
+
+        // --- NEW LOGIC FOR OTHER/MISC ---
+        function handleCategoryChange() {
+            const cat = document.getElementById('exp-cat').value;
+            const container = document.getElementById('misc-details-container');
+            const detailsInput = document.getElementById('exp-details');
+            
+            if (cat === "Other/Misc") {
+                container.classList.add('show');
+                detailsInput.focus();
+            } else {
+                container.classList.remove('show');
+                detailsInput.value = ''; // Reset when not in use
             }
         }
 
@@ -257,7 +291,6 @@
             unsubscribe = docRef.onSnapshot((doc) => {
                 if (doc.exists) {
                     currentData = doc.data();
-                    // Migration: Ensure expenses is always an array
                     if (!currentData.expenses) currentData.expenses = [];
                 } else {
                     currentData = { revenue: {}, expenses: [], status: 'open' };
@@ -313,6 +346,10 @@
                 expenses.forEach((exp, i) => {
                     const amt = parseFloat(exp.amount || 0);
                     totalOut += amt;
+                    
+                    // Format category name if it has details
+                    const displayName = exp.details ? `${exp.category}: ${exp.details}` : exp.category;
+                    
                     list.innerHTML += `
                         <div class="flex justify-between items-center p-4 bg-slate-50 rounded-2xl border border-slate-100 hover:border-slate-200 transition-all">
                             <div class="flex items-center gap-3">
@@ -320,7 +357,7 @@
                                     <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="M19 14l-7 7-7-7"/></svg>
                                 </div>
                                 <div>
-                                    <p class="text-[10px] font-black uppercase text-slate-600 tracking-tight leading-none mb-1">${exp.category}</p>
+                                    <p class="text-[10px] font-black uppercase text-slate-600 tracking-tight leading-none mb-1">${displayName}</p>
                                     <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Expense Item</p>
                                 </div>
                             </div>
@@ -365,24 +402,35 @@
 
         async function addExpense() {
             const cat = document.getElementById('exp-cat').value;
+            const details = document.getElementById('exp-details').value;
             const amtInput = document.getElementById('exp-amt');
             const amt = amtInput.value;
             
             if(!amt || isNaN(parseFloat(amt))) return;
             
+            // Require details if Other/Misc is selected
+            if (cat === "Other/Misc" && !details.trim()) {
+                alert("Please specify the reason for 'Other/Misc' expense.");
+                document.getElementById('exp-details').focus();
+                return;
+            }
+
             if (!Array.isArray(currentData.expenses)) currentData.expenses = [];
             
-            // Add new expense to the start of the array
             currentData.expenses.unshift({ 
                 category: cat, 
+                details: details.trim(),
                 amount: parseFloat(amt),
                 id: Date.now() 
             });
             
+            // Reset fields
             amtInput.value = '';
-            // Update UI immediately for responsiveness
+            document.getElementById('exp-details').value = '';
+            document.getElementById('exp-cat').selectedIndex = 0;
+            handleCategoryChange(); // Hide details box
+
             updateUI();
-            // Save to cloud
             save();
         }
 

@@ -57,7 +57,7 @@
                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                 </div>
                 <h1 class="text-2xl font-black uppercase tracking-tighter text-slate-900">Voices South</h1>
-                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Financial Portal v3.1</p>
+                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Financial Portal v3.3</p>
             </div>
             <div class="space-y-4">
                 <input id="login-id" type="text" placeholder="Admin ID" class="w-full px-5 py-4 bg-slate-100 rounded-xl font-bold border-2 border-transparent focus:border-indigo-500 transition-all outline-none">
@@ -85,23 +85,31 @@
                     <button onclick="changeDate(-7)" class="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400">
                         <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
                     </button>
-                    <h2 id="display-date" class="text-3xl font-black tracking-tighter italic text-slate-900">...</h2>
+                    <div>
+                        <h2 id="display-date" class="text-3xl font-black tracking-tighter italic text-slate-900">...</h2>
+                        <p class="text-[9px] font-bold text-slate-400 uppercase tracking-[0.2em]">Week Ending Date</p>
+                    </div>
                     <button onclick="changeDate(7)" class="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400">
                         <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
                     </button>
                 </div>
                 <div class="flex items-center justify-center gap-2">
                     <div id="sync-dot" class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                    <span id="sync-status" class="text-[10px] font-black uppercase text-slate-400 tracking-widest">Connected to Cloud</span>
+                    <span id="sync-status" class="text-[10px] font-black uppercase text-slate-400 tracking-widest">Live Cloud Sync</span>
                 </div>
             </div>
 
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <!-- REVENUE ENTRY -->
                 <div class="bg-white p-7 rounded-[2.5rem] border shadow-sm flex flex-col">
-                    <h3 class="font-black text-[11px] uppercase tracking-[0.2em] text-slate-400 mb-6 flex items-center gap-3">
-                        <span class="w-3 h-3 rounded-full bg-emerald-500 shadow-lg shadow-emerald-200"></span> Weekly Income Entry
-                    </h3>
+                    <div class="flex justify-between items-start mb-6">
+                        <h3 class="font-black text-[11px] uppercase tracking-[0.2em] text-slate-400 flex items-center gap-3">
+                            <span class="w-3 h-3 rounded-full bg-emerald-500 shadow-lg shadow-emerald-200"></span> Weekly Income Entry
+                        </h3>
+                        <div id="legacy-alert" class="hidden animate-bounce">
+                            <span class="bg-amber-100 text-amber-700 text-[9px] font-black px-3 py-1 rounded-full uppercase">Old Data Found</span>
+                        </div>
+                    </div>
                     
                     <!-- Day Selector Tabs -->
                     <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-8">
@@ -175,12 +183,12 @@
             <!-- FOOTER TOTALS -->
             <div class="fixed bottom-6 left-1/2 -translate-x-1/2 w-[95%] max-w-4xl bg-slate-900 p-8 rounded-[3rem] text-white flex flex-col md:flex-row justify-between items-center shadow-2xl gap-6 z-40">
                 <div class="text-center md:text-left flex-1">
-                    <p class="text-[10px] font-black uppercase text-slate-400 tracking-[0.3em] mb-1">Weekly Cash Flow (All Days)</p>
+                    <p class="text-[10px] font-black uppercase text-slate-400 tracking-[0.3em] mb-1">Weekly Cash Flow (Net Sum)</p>
                     <p id="total-val" class="text-4xl font-black tracking-tighter italic text-emerald-400">$0.00</p>
                 </div>
                 <div class="flex items-center gap-4">
                     <div class="text-right hidden md:block mr-4">
-                        <p class="text-[9px] font-black uppercase text-slate-500 tracking-widest">Total Revenue</p>
+                        <p class="text-[9px] font-black uppercase text-slate-500 tracking-widest">Total Income</p>
                         <p id="total-revenue-sum" class="text-lg font-bold text-emerald-400">$0.00</p>
                     </div>
                     <button onclick="sealReport()" id="seal-btn" class="bg-white text-black px-10 py-4 rounded-[1.5rem] font-black uppercase text-xs tracking-widest hover:bg-emerald-500 hover:text-white transition-all">
@@ -214,20 +222,28 @@
 
         const appId = "church-finance-dashboard-40dca";
         let db, auth;
-        let currentDate = new Date();
+        
+        // --- NEW LOGIC: START AT JAN 2nd 2026 ---
+        let currentDate = new Date(2026, 0, 2); 
+        
         let activeDay = 'sun';
         let currentData = { revenue: {}, expenses: [], status: 'open' };
 
         window.onload = async () => {
-            const day = currentDate.getDay();
-            const diff = day >= 2 ? day - 2 : day + 5; 
-            currentDate.setDate(currentDate.getDate() - diff);
-            
             try {
                 firebase.initializeApp(firebaseConfig);
                 db = firebase.firestore();
                 auth = firebase.auth();
                 await auth.signInAnonymously();
+                
+                // If today is past Jan 2nd 2026, adjust the default date to the most recent Friday relative to today
+                const realToday = new Date();
+                if (realToday > currentDate) {
+                    const diffInTime = realToday.getTime() - currentDate.getTime();
+                    const diffInDays = Math.floor(diffInTime / (1000 * 3600 * 24));
+                    const weeksToAdd = Math.floor(diffInDays / 7);
+                    currentDate.setDate(currentDate.getDate() + (weeksToAdd * 7));
+                }
             } catch (e) { console.error(e); }
         };
 
@@ -264,8 +280,12 @@
             unsubscribe = docRef.onSnapshot((doc) => {
                 if (doc.exists) {
                     currentData = doc.data();
+                    const keys = Object.keys(currentData.revenue || {});
+                    const hasLegacy = keys.some(k => !k.includes('_') && k !== 'bank_balance');
+                    document.getElementById('legacy-alert').classList.toggle('hidden', !hasLegacy);
                 } else {
                     currentData = { revenue: {}, expenses: [], status: 'open' };
+                    document.getElementById('legacy-alert').classList.add('hidden');
                 }
                 updateUI();
             });
@@ -276,7 +296,6 @@
             const grid = document.getElementById('income-grid');
             grid.innerHTML = '';
 
-            // Render Income Categories for the ACTIVE giving day
             INCOME_CATEGORIES.forEach(cat => {
                 const storageKey = `${activeDay}_${cat.replace(/[\/\s]+/g, '_').toLowerCase()}`;
                 const val = currentData.revenue?.[storageKey] || '';
@@ -285,7 +304,7 @@
                     <div class="flex justify-between items-center bg-slate-50 p-4 rounded-2xl border border-slate-100 group hover:border-indigo-200 transition-colors">
                         <div>
                             <span class="text-[10px] font-black uppercase text-slate-400 block tracking-wider">${cat}</span>
-                            <span class="text-[8px] font-bold text-indigo-400 uppercase">${activeDay} Giving</span>
+                            <span class="text-[8px] font-bold text-indigo-400 uppercase">${activeDay} Entry</span>
                         </div>
                         <div class="flex items-center w-36">
                             <span class="text-sm font-bold text-slate-300 mr-2">$</span>
@@ -300,22 +319,17 @@
                 `;
             });
 
-            // Set Bank Balance separately
             const bbInput = document.getElementById('in-bank_balance');
             bbInput.value = currentData.revenue?.bank_balance || '';
             bbInput.disabled = isLocked;
-            isLocked ? bbInput.classList.add('locked-input') : bbInput.classList.remove('locked-input');
 
-            // Handle Expenses List & Overall Totals
             const list = document.getElementById('expense-list');
             list.innerHTML = '';
             let totalOut = 0;
             let totalIn = 0;
 
-            // Calculate total income from ALL days and ALL categories in currentData.revenue
             if (currentData.revenue) {
                 Object.keys(currentData.revenue).forEach(key => {
-                    // Make sure we don't count the bank balance in the "Income" total
                     if (key !== 'bank_balance' && !isNaN(parseFloat(currentData.revenue[key]))) {
                         totalIn += parseFloat(currentData.revenue[key]);
                     }
@@ -337,11 +351,6 @@
                 `;
             });
 
-            if(!currentData.expenses?.length) {
-                list.innerHTML = `<p class="text-center py-6 text-[10px] font-bold text-slate-300 uppercase italic">No expenses logged</p>`;
-            }
-
-            // Calculations for Footer
             const net = totalIn - totalOut;
             document.getElementById('exp-total-badge').innerText = `$${totalOut.toLocaleString(undefined, {minimumFractionDigits: 2})} OUT`;
             document.getElementById('total-revenue-sum').innerText = `$${totalIn.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
@@ -354,12 +363,6 @@
             sealBtn.innerText = isLocked ? "Report Sealed" : "Finalize Week";
             sealBtn.disabled = isLocked;
             if(isLocked) sealBtn.classList.add('opacity-50');
-            
-            document.getElementById('exp-cat').disabled = isLocked;
-            document.getElementById('exp-amt').disabled = isLocked;
-            document.getElementById('add-exp-btn').disabled = isLocked;
-            if(isLocked) document.getElementById('expense-entry-box').classList.add('opacity-50');
-            else document.getElementById('expense-entry-box').classList.remove('opacity-50');
         }
 
         async function updateRevenue(fieldId, val) {

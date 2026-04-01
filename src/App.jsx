@@ -6,6 +6,7 @@ import {
   setDoc, 
   getDoc,
   onSnapshot,
+  collection
 } from 'firebase/firestore';
 import { 
   getAuth, 
@@ -26,10 +27,11 @@ import {
   ShieldCheck,
   LogOut,
   History,
-  AlertCircle
+  AlertCircle,
+  Search
 } from 'lucide-react';
 
-// --- FIXED FIREBASE CONFIGURATION ---
+// --- PRODUCTION FIREBASE CONFIG ---
 const firebaseConfig = {
   apiKey: "AIzaSyAs-your-actual-key-here", 
   authDomain: "church-finance-dashboard-40dca.firebaseapp.com",
@@ -54,19 +56,9 @@ const EXPENSE_CATEGORIES = [
   'Team Pest USA', 'First Citizens Bank', 'Other'
 ];
 
-const RECOVERY_MAP = {
-  'Cash/Checks': 'Cash/Checks',
-  'Credit/Debit Cards': 'Credit Card',
-  'Text': 'Text',
-  'Givelify': 'Givelify',
-  'Tithely': 'Tithely',
-  'CashApp': 'CashApp',
-  'Zelle': 'Zelle',
-  'Website Giving': 'Website Giving'
-};
-
 const ADMIN_CREDENTIALS = { loginId: "voicessouth", password: "3894South" };
 
+// Standardized Date Formatter to ensure 1-2-26 vs 01-02-26 consistency
 const formatDate = (date) => {
   const d = new Date(date);
   return `${d.getMonth() + 1}-${d.getDate()}-${d.getFullYear().toString().slice(-2)}`;
@@ -97,7 +89,7 @@ export default function App() {
   const [statusLogs, setStatusLogs] = useState(["System Ready."]);
 
   const addLog = useCallback((msg) => {
-    setStatusLogs(prev => [`${msg}`, ...prev].slice(0, 3));
+    setStatusLogs(prev => [`${msg}`, ...prev].slice(0, 5));
   }, []);
 
   useEffect(() => {
@@ -119,75 +111,69 @@ export default function App() {
     return () => unsubscribe();
   }, [addLog]);
 
+  // DEEP DATA RECOVERY TRIGGER
   useEffect(() => {
     if (!user || !isAuthenticated) return;
 
-    setIsSyncing(true);
-    const sanitizedMode = viewMode.replace(/\s+/g, '_').toLowerCase();
-    const docId = `finance_${selectedSheetDate}_${sanitizedMode}`;
-    
-    // NEW PATH
-    const docRef = doc(db, 'artifacts', appId, 'public', 'data', docId);
-    
-    // DEEP RECOVERY PATHS
-    const legacyPath1 = doc(db, 'artifacts', appId, 'public', 'data', 'reports', selectedSheetDate);
-    const legacyPath2 = doc(db, 'artifacts', appId, 'public', 'data', selectedSheetDate); // Root data path
+    const performDeepScan = async () => {
+      setIsSyncing(true);
+      const sanitizedMode = viewMode.replace(/\s+/g, '_').toLowerCase();
+      
+      // Current Path
+      const primaryDocId = `finance_${selectedSheetDate}_${sanitizedMode}`;
+      const primaryRef = doc(db, 'artifacts', appId, 'public', 'data', primaryDocId);
+      
+      try {
+        const primarySnap = await getDoc(primaryRef);
+        
+        if (primarySnap.exists()) {
+          const data = primarySnap.data();
+          setRevenueData(data.revenue || {});
+          setExpenses(data.expenses || []);
+          setManualStartingBalance(data.startingBalance || 0);
+          setIsSubmitted(data.status === 'submitted');
+          addLog(`Loaded: ${selectedSheetDate}`);
+        } else {
+          addLog(`Scanning legacy data for ${selectedSheetDate}...`);
+          
+          // TRY LEGACY PATH 1: data/{date}
+          const legacy1 = doc(db, 'artifacts', appId, 'public', 'data', selectedSheetDate);
+          // TRY LEGACY PATH 2: reports/{date}
+          const legacy2 = doc(db, 'artifacts', appId, 'public', 'reports', selectedSheetDate);
+          
+          let foundData = null;
+          const [snap1, snap2] = await Promise.all([getDoc(legacy1), getDoc(legacy2)]);
+          
+          if (snap1.exists()) foundData = snap1.data();
+          else if (snap2.exists()) foundData = snap2.data();
 
-    const unsubscribe = onSnapshot(docRef, async (snap) => {
-      if (snap.exists()) {
-        const data = snap.data();
-        setRevenueData(data.revenue || {});
-        setExpenses(data.expenses || []);
-        setManualStartingBalance(data.startingBalance || 0);
-        setIsSubmitted(data.status === 'submitted');
-        addLog(`Active Record: ${selectedSheetDate}`);
-        setIsSyncing(false);
-      } else {
-        addLog(`Scanning deep storage for ${selectedSheetDate}...`);
-        try {
-            // Check Path 1
-            let legacySnap = await getDoc(legacyPath1);
-            // If not found, check Path 2
-            if (!legacySnap.exists()) legacySnap = await getDoc(legacyPath2);
-
-            if (legacySnap.exists()) {
-              addLog("ARCHIVE FOUND! Recovering...");
-              const legacyData = legacySnap.data();
-              
-              const recoveredRevenue = {};
-              if (legacyData.revenue) {
-                Object.entries(legacyData.revenue).forEach(([oldKey, value]) => {
-                  const newKey = RECOVERY_MAP[oldKey] || oldKey;
-                  recoveredRevenue[newKey] = value;
-                });
-              }
-
-              // Auto-migrate to current structure
-              await setDoc(docRef, {
-                revenue: recoveredRevenue,
-                expenses: legacyData.expenses || [],
-                startingBalance: legacyData.startingBalance || 0,
-                migrated: true,
-                recoveredAt: new Date().toISOString()
-              });
-            } else {
-              setRevenueData({});
-              setExpenses([]);
-              setManualStartingBalance(0);
-              setIsSubmitted(false);
-              addLog(`Empty: ${selectedSheetDate}`);
-            }
-        } catch (e) {
-            addLog("Deep Scan Error");
+          if (foundData) {
+            addLog("RECOVERY SUCCESSFUL!");
+            setRevenueData(foundData.revenue || {});
+            setExpenses(foundData.expenses || []);
+            setManualStartingBalance(foundData.startingBalance || 0);
+            
+            // Auto-migrate so it works in the new view
+            await setDoc(primaryRef, {
+              ...foundData,
+              migratedFromLegacy: true,
+              recoveredAt: new Date().toISOString()
+            });
+          } else {
+            setRevenueData({});
+            setExpenses([]);
+            setManualStartingBalance(0);
+            setIsSubmitted(false);
+            addLog(`No record found for ${selectedSheetDate}`);
+          }
         }
-        setIsSyncing(false);
+      } catch (err) {
+        addLog(`Database Disconnect: ${err.code}`);
       }
-    }, (err) => {
       setIsSyncing(false);
-      addLog(`Sync Error: ${err.code}`);
-    });
+    };
 
-    return () => unsubscribe();
+    performDeepScan();
   }, [user, isAuthenticated, selectedSheetDate, viewMode, addLog]);
 
   const totals = useMemo(() => {
@@ -211,182 +197,204 @@ export default function App() {
 
   if (!authReady) return (
     <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6 text-white text-center">
-        <Database className="animate-bounce mb-4 text-indigo-400" size={40} />
-        <span className="text-[10px] font-black uppercase tracking-widest opacity-50">Syncing with Cloud...</span>
+        <Database className="animate-pulse mb-4 text-indigo-400" size={40} />
+        <span className="text-[10px] font-black uppercase tracking-widest opacity-50">Establishing Secure Tunnel...</span>
     </div>
   );
 
   if (!isAuthenticated) return (
-    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6">
-      <div className="w-full max-w-md bg-white rounded-[3rem] p-12 shadow-2xl">
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
+      <div className="w-full max-w-md bg-white rounded-[2.5rem] p-10 shadow-2xl overflow-hidden relative">
+        <div className="absolute top-0 left-0 w-full h-2 bg-indigo-600"></div>
         <div className="mb-10 text-center">
-            <div className="w-16 h-16 bg-indigo-600 rounded-2xl mx-auto mb-6 flex items-center justify-center text-white shadow-lg">
+            <div className="w-16 h-16 bg-slate-900 rounded-2xl mx-auto mb-6 flex items-center justify-center text-white shadow-lg">
                 <ShieldCheck size={32}/>
             </div>
-            <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">Voices South</h1>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Authorized Access</p>
+            <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">Voices South Financials</h1>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Management Portal</p>
         </div>
         <form onSubmit={(e) => {
           e.preventDefault();
           const d = new FormData(e.target);
           if (d.get('id').toLowerCase() === ADMIN_CREDENTIALS.loginId && d.get('pw') === ADMIN_CREDENTIALS.password) {
             setIsAuthenticated(true);
-            addLog("Authenticated");
+            addLog("Session Established");
           } else {
-            addLog("Access Denied");
+            addLog("Invalid Credentials");
           }
         }} className="space-y-4">
-          <input name="id" type="text" placeholder="Login ID" required className="w-full px-6 py-4 bg-slate-50 rounded-2xl border border-slate-100 font-bold outline-none" />
-          <input name="pw" type="password" placeholder="Passcode" required className="w-full px-6 py-4 bg-slate-50 rounded-2xl border border-slate-100 font-bold outline-none" />
-          <button type="submit" className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black uppercase tracking-widest hover:bg-indigo-600 transition-all text-xs">Login</button>
+          <input name="id" type="text" placeholder="Admin ID" required className="w-full px-6 py-4 bg-slate-50 rounded-2xl border border-slate-100 font-bold outline-none focus:ring-2 ring-indigo-500/20" />
+          <input name="pw" type="password" placeholder="Passcode" required className="w-full px-6 py-4 bg-slate-50 rounded-2xl border border-slate-100 font-bold outline-none focus:ring-2 ring-indigo-500/20" />
+          <button type="submit" className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black uppercase tracking-widest hover:bg-indigo-600 transition-all text-xs">Authorize Access</button>
         </form>
       </div>
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] pb-32">
-      <div className="bg-slate-900 text-white px-6 py-3 flex items-center justify-between sticky top-0 z-50 shadow-lg">
-        <div className="flex items-center gap-3 overflow-hidden">
-            <ShieldCheck size={16} className="text-emerald-400 shrink-0"/>
-            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 border-r border-slate-700 pr-3 mr-1 shrink-0">System Log</span>
-            <span className="text-[10px] font-black uppercase text-emerald-400 truncate">{statusLogs[0]}</span>
+    <div className="min-h-screen bg-[#F1F5F9] pb-32 font-sans">
+      {/* Dynamic Status Bar */}
+      <div className="bg-slate-900 text-white px-6 py-3 flex items-center justify-between sticky top-0 z-50 shadow-xl border-b border-white/10">
+        <div className="flex items-center gap-4 overflow-hidden">
+            <div className={`w-2 h-2 rounded-full ${isSyncing ? 'bg-amber-400 animate-ping' : 'bg-emerald-400'}`}></div>
+            <div className="flex flex-col">
+                <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Live Database Status</span>
+                <span className="text-[10px] font-bold text-indigo-300 truncate">{statusLogs[0]}</span>
+            </div>
         </div>
-        <button onClick={() => setIsAuthenticated(false)} className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-white transition-colors flex items-center gap-2 shrink-0">
-            Exit <LogOut size={14}/>
-        </button>
+        <div className="flex items-center gap-6">
+            <div className="hidden md:flex items-center gap-2 text-[9px] font-black text-slate-500 uppercase tracking-widest">
+                <Database size={12}/> {appId}
+            </div>
+            <button onClick={() => setIsAuthenticated(false)} className="bg-white/10 hover:bg-white/20 p-2 rounded-lg transition-colors">
+                <LogOut size={16}/>
+            </button>
+        </div>
       </div>
 
-      <header className="max-w-6xl mx-auto mt-12 px-6 grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="md:col-span-2 bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm flex items-center justify-between">
-          <button onClick={() => {
-            const [m, d, y] = selectedSheetDate.split('-').map(Number);
-            const date = new Date(2000 + y, m - 1, d);
-            date.setDate(date.getDate() - 7);
-            setSelectedSheetDate(formatDate(date));
-          }} className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 hover:text-indigo-600 transition-all border border-slate-100"><ChevronLeft size={24}/></button>
-          
-          <div className="text-center">
-            <div className="flex gap-2 justify-center mb-3">
-                {['Sun', 'Tue', 'End Month'].map(m => (
-                    <button key={m} onClick={() => setViewMode(m)} className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-tighter transition-all ${viewMode === m ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}>{m}</button>
-                ))}
+      <header className="max-w-6xl mx-auto mt-12 px-6">
+        <div className="bg-white p-8 md:p-12 rounded-[3rem] border border-slate-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-8">
+          <div className="flex items-center gap-6">
+            <button onClick={() => {
+                const [m, d, y] = selectedSheetDate.split('-').map(Number);
+                const date = new Date(2000 + y, m - 1, d);
+                date.setDate(date.getDate() - 7);
+                setSelectedSheetDate(formatDate(date));
+            }} className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 hover:bg-indigo-600 hover:text-white transition-all border border-slate-100 shadow-sm"><ChevronLeft size={28}/></button>
+            
+            <div className="text-center md:text-left">
+                <p className="text-[10px] font-black uppercase text-indigo-600 tracking-[0.2em] mb-1">Week Ending Date</p>
+                <h2 className="text-5xl font-black text-slate-900 tracking-tighter">{selectedSheetDate}</h2>
             </div>
-            <h2 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tighter">{selectedSheetDate}</h2>
+
+            <button onClick={() => {
+                const [m, d, y] = selectedSheetDate.split('-').map(Number);
+                const date = new Date(2000 + y, m - 1, d);
+                date.setDate(date.getDate() + 7);
+                setSelectedSheetDate(formatDate(date));
+            }} className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 hover:bg-indigo-600 hover:text-white transition-all border border-slate-100 shadow-sm"><ChevronRight size={28}/></button>
           </div>
 
-          <button onClick={() => {
-            const [m, d, y] = selectedSheetDate.split('-').map(Number);
-            const date = new Date(2000 + y, m - 1, d);
-            date.setDate(date.getDate() + 7);
-            setSelectedSheetDate(formatDate(date));
-          }} className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 hover:text-indigo-600 transition-all border border-slate-100"><ChevronRight size={24}/></button>
-        </div>
-
-        <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm flex flex-col justify-center">
-             <p className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] mb-2">Account Balance</p>
+          <div className="flex flex-col items-center md:items-end gap-3">
+             <div className="flex bg-slate-100 p-1.5 rounded-2xl">
+                {['Sun', 'Tue', 'End Month'].map(m => (
+                    <button key={m} onClick={() => setViewMode(m)} className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-tight transition-all ${viewMode === m ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>{m}</button>
+                ))}
+             </div>
              <div className="flex items-baseline gap-2">
-                <span className="text-4xl font-black text-slate-900">$</span>
-                <span className="text-5xl font-black text-slate-900 tracking-tighter truncate">
+                <span className="text-xl font-black text-slate-400">$</span>
+                <span className="text-4xl font-black text-slate-900 tracking-tighter">
                     {totals.end.toLocaleString(undefined, {minimumFractionDigits: 2})}
                 </span>
              </div>
+          </div>
         </div>
       </header>
 
       <main className="max-w-6xl mx-auto mt-10 px-6 grid grid-cols-1 lg:grid-cols-2 gap-10">
-        <section>
-          <div className="flex items-center justify-between mb-6 px-2">
+        {/* Revenue Column */}
+        <section className="space-y-6">
+          <div className="flex items-center justify-between px-4">
             <h3 className="font-black text-xs uppercase tracking-widest text-slate-900 flex items-center gap-3">
-              <div className="w-8 h-8 bg-emerald-100 text-emerald-600 rounded-lg flex items-center justify-center"><TrendingUp size={18}/></div>
-              Revenue
+              <div className="w-10 h-10 bg-emerald-500 text-white rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/20"><TrendingUp size={20}/></div>
+              Revenue Entry
             </h3>
-            <div className="text-[11px] font-black text-slate-400 uppercase">Subtotal: ${totals.rev.toLocaleString()}</div>
+            <span className="text-xs font-black text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full">+${totals.rev.toLocaleString()}</span>
           </div>
           
-          <div className="bg-white p-8 rounded-[3rem] border border-slate-200 shadow-sm space-y-5">
-            <div className="p-5 bg-slate-50 rounded-2xl flex items-center justify-between border border-slate-100 mb-4 shadow-inner">
+          <div className="bg-white p-8 rounded-[3rem] border border-slate-200 shadow-sm space-y-6">
+            <div className="p-6 bg-indigo-50/50 rounded-3xl border border-indigo-100 flex items-center justify-between mb-2">
                  <div className="flex items-center gap-3">
-                    <History size={16} className="text-slate-400" />
-                    <span className="text-[10px] font-black uppercase text-slate-400">Opening Balance</span>
+                    <History size={18} className="text-indigo-400" />
+                    <span className="text-[11px] font-black uppercase text-indigo-600 tracking-wider">Starting Balance</span>
                  </div>
                  <input type="number" value={manualStartingBalance || ''} disabled={isSubmitted}
                     onChange={(e) => {
                       const v = parseFloat(e.target.value) || 0;
                       setManualStartingBalance(v);
                       handleSave({ startingBalance: v });
-                    }} className="bg-transparent text-right font-black text-slate-900 outline-none w-28 placeholder-slate-200 text-lg" placeholder="0.00" />
+                    }} className="bg-transparent text-right font-black text-indigo-900 outline-none w-32 text-xl" placeholder="0.00" />
             </div>
 
-            {REVENUE_CATEGORIES.map(cat => (
-              <div key={cat} className="flex items-center justify-between py-2 border-b border-slate-50 last:border-0">
-                <span className="text-[11px] font-black text-slate-900 uppercase tracking-tight">{cat}</span>
-                <div className="flex items-center gap-2">
-                    <span className="text-slate-300 font-bold">$</span>
-                    <input type="number" value={revenueData[cat] || ''} disabled={isSubmitted}
-                        onChange={(e) => {
-                          const updated = { ...revenueData, [cat]: e.target.value };
-                          setRevenueData(updated);
-                          handleSave({ revenue: updated });
-                        }} className="w-32 py-1 font-black text-right outline-none text-lg text-slate-900 placeholder-slate-200" placeholder="0" />
+            <div className="space-y-1">
+                {REVENUE_CATEGORIES.map(cat => (
+                <div key={cat} className="flex items-center justify-between p-4 rounded-2xl hover:bg-slate-50 transition-colors group">
+                    <span className="text-[11px] font-black text-slate-500 uppercase tracking-tight group-hover:text-slate-900">{cat}</span>
+                    <div className="flex items-center gap-3">
+                        <span className="text-slate-300 font-bold">$</span>
+                        <input type="number" value={revenueData[cat] || ''} disabled={isSubmitted}
+                            onChange={(e) => {
+                            const updated = { ...revenueData, [cat]: e.target.value };
+                            setRevenueData(updated);
+                            handleSave({ revenue: updated });
+                            }} className="w-32 py-1 font-black text-right outline-none text-xl text-slate-900 placeholder-slate-100 bg-transparent" placeholder="0" />
+                    </div>
                 </div>
-              </div>
-            ))}
+                ))}
+            </div>
           </div>
         </section>
 
-        <section>
-          <div className="flex items-center justify-between mb-6 px-2">
+        {/* Expenses Column */}
+        <section className="space-y-6">
+          <div className="flex items-center justify-between px-4">
             <h3 className="font-black text-xs uppercase tracking-widest text-slate-900 flex items-center gap-3">
-              <div className="w-8 h-8 bg-rose-100 text-rose-600 rounded-lg flex items-center justify-center"><Wallet size={18}/></div>
+              <div className="w-10 h-10 bg-rose-500 text-white rounded-xl flex items-center justify-center shadow-lg shadow-rose-500/20"><Wallet size={20}/></div>
               Expenditures
             </h3>
-            <div className="text-[11px] font-black text-rose-500 uppercase">Out: ${totals.exp.toLocaleString()}</div>
+            <span className="text-xs font-black text-rose-600 bg-rose-50 px-3 py-1 rounded-full">-${totals.exp.toLocaleString()}</span>
           </div>
 
-          <div className="bg-white p-8 rounded-[3rem] border border-slate-200 shadow-sm">
+          <div className="bg-white p-8 rounded-[3rem] border border-slate-200 shadow-sm min-h-[500px] flex flex-col">
               {!isSubmitted && (
                 <form onSubmit={(e) => {
                   e.preventDefault();
                   const f = new FormData(e.target);
-                  const newExp = { category: f.get('c'), amount: f.get('a'), date: new Date().toLocaleTimeString() };
+                  const newExp = { 
+                    category: f.get('c'), 
+                    amount: f.get('a'), 
+                    date: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) 
+                  };
                   const updated = [newExp, ...expenses];
                   setExpenses(updated);
                   handleSave({ expenses: updated });
                   e.target.reset();
-                }} className="mb-8 p-6 bg-slate-50 rounded-3xl border border-slate-100 space-y-4 shadow-inner">
-                  <select name="c" className="w-full bg-white border border-slate-200 rounded-xl p-3 text-xs font-black uppercase outline-none shadow-sm">
-                      {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                }} className="mb-8 p-6 bg-slate-950 rounded-[2rem] space-y-4 shadow-xl">
+                  <select name="c" className="w-full bg-white/10 border border-white/10 rounded-xl p-4 text-[10px] font-black uppercase text-white outline-none">
+                      {EXPENSE_CATEGORIES.map(c => <option key={c} value={c} className="text-slate-900">{c}</option>)}
                   </select>
-                  <div className="flex gap-2">
-                      <input name="a" type="number" step="0.01" required placeholder="0.00" className="flex-1 bg-white border border-slate-200 rounded-xl p-3 text-sm font-black outline-none shadow-sm" />
-                      <button type="submit" className="bg-slate-900 text-white px-6 rounded-xl hover:bg-indigo-600 transition-all shadow-lg active:scale-95"><Plus size={20}/></button>
+                  <div className="flex gap-3">
+                      <input name="a" type="number" step="0.01" required placeholder="Amount 0.00" className="flex-1 bg-white/10 border border-white/10 rounded-xl p-4 text-sm font-black text-white outline-none" />
+                      <button type="submit" className="bg-indigo-600 text-white px-8 rounded-xl hover:bg-indigo-500 transition-all font-black uppercase text-[10px] tracking-widest">Add</button>
                   </div>
                 </form>
               )}
 
-              <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+              <div className="flex-1 space-y-3 overflow-y-auto pr-2 custom-scrollbar">
                 {expenses.length === 0 ? (
-                  <div className="py-20 flex flex-col items-center justify-center text-slate-300 gap-3 opacity-50">
-                    <Database size={32} strokeWidth={1.5}/>
-                    <span className="text-[10px] font-black uppercase tracking-widest">No entries recorded</span>
+                  <div className="flex-1 flex flex-col items-center justify-center text-slate-300 gap-4 opacity-40 py-20">
+                    <Search size={48} strokeWidth={1}/>
+                    <p className="text-[10px] font-black uppercase tracking-[0.3em]">Waiting for entries</p>
                   </div>
                 ) : (
                   expenses.map((exp, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 group shadow-sm transition-all hover:border-indigo-200">
-                      <div>
-                        <div className="text-[10px] font-black text-slate-900 uppercase tracking-tight">{exp.category}</div>
-                        <div className="text-[8px] font-bold text-slate-400 uppercase">{exp.date}</div>
+                    <div key={idx} className="flex items-center justify-between p-5 bg-slate-50 rounded-2xl border border-slate-100 group hover:border-indigo-200 transition-all">
+                      <div className="flex gap-4 items-center">
+                        <div className="w-2 h-2 rounded-full bg-rose-400"></div>
+                        <div>
+                            <div className="text-[11px] font-black text-slate-900 uppercase tracking-tight">{exp.category}</div>
+                            <div className="text-[8px] font-bold text-slate-400 uppercase">{exp.date}</div>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-4">
-                        <span className="font-black text-rose-600">-${parseFloat(exp.amount).toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                      <div className="flex items-center gap-5">
+                        <span className="font-black text-slate-900">-${parseFloat(exp.amount).toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
                         {!isSubmitted && (
                           <button onClick={() => {
                             const updated = expenses.filter((_, i) => i !== idx);
                             setExpenses(updated);
                             handleSave({ expenses: updated });
-                          }} className="text-slate-300 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-all">
-                            <XCircle size={16}/>
+                          }} className="text-slate-300 hover:text-rose-600 transition-all">
+                            <XCircle size={18}/>
                           </button>
                         )}
                       </div>
@@ -398,21 +406,23 @@ export default function App() {
         </section>
       </main>
 
-      <div className="fixed bottom-10 left-1/2 -translate-x-1/2 w-full max-w-md px-6">
+      {/* Floating Action Button */}
+      <div className="fixed bottom-10 left-1/2 -translate-x-1/2 w-full max-w-sm px-6">
         <button 
-          onClick={() => { if(window.confirm("Archive this report?")) handleSave({ status: 'submitted' }); }}
+          onClick={() => { if(window.confirm("Archive this report permanently?")) handleSave({ status: 'submitted' }); }}
           disabled={isSubmitted || isSyncing}
-          className={`w-full py-6 rounded-3xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-4 shadow-2xl transition-all ${isSubmitted ? 'bg-emerald-500 text-white' : 'bg-slate-900 text-white hover:bg-indigo-600 active:scale-95'}`}
+          className={`w-full py-6 rounded-[2rem] font-black text-[11px] uppercase tracking-[0.2em] flex items-center justify-center gap-4 shadow-2xl transition-all ${isSubmitted ? 'bg-emerald-500 text-white shadow-emerald-500/20' : 'bg-slate-900 text-white hover:bg-indigo-600 active:scale-95 shadow-slate-900/40'}`}
         >
-          {isSubmitted ? <CheckCircle2 size={20}/> : <BarChart3 size={20}/>}
-          {isSubmitted ? 'Locked & Verified' : 'Lock & Archive Report'}
+          {isSubmitted ? <ShieldCheck size={20}/> : <BarChart3 size={20}/>}
+          {isSubmitted ? 'Locked & Verified' : 'Finalize & Archive'}
         </button>
       </div>
 
       <style>{`
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #E2E8F0; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 10px; }
+        input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
       `}</style>
     </div>
   );

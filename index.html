@@ -147,6 +147,7 @@
                         <div class="space-y-3">
                             <select id="exp-cat" onchange="handleCategoryChange()" class="w-full p-4 bg-slate-50 rounded-2xl text-[11px] font-black uppercase tracking-wider border-2 border-transparent focus:border-slate-900 outline-none appearance-none">
                                 <option>Mortgage - Kirkland Group</option>
+                                <option>First Citizens Bank</option>
                                 <option>Pastor Payroll</option>
                                 <option>Lady Val Payroll</option>
                                 <option>Admin Payroll Taxes</option>
@@ -154,16 +155,21 @@
                                 <option>Georgia Power</option>
                                 <option>Georgia Natural Gas</option>
                                 <option>Spectrum</option>
-                                <option>Water Authority</option>
+                                <option>Henry County Water</option>
                                 <option>TMobile</option>
                                 <option>Ministry Design</option>
                                 <option>Quickbooks</option>
                                 <option>GFL Environmental</option>
+                                <option>Brotherhood Mutual Property</option>
+                                <option>Brotherhood Mutual Workers Comp</option>
+                                <option>Team Pest USA</option>
+                                <option>Pastors Love offering</option>
+                                <option>Guest Psalmist</option>
                                 <option>Other/Misc</option>
                             </select>
                             
                             <div id="misc-details-container">
-                                <input id="exp-details" type="text" placeholder="Specify expense reason..." class="w-full p-4 bg-slate-50 rounded-2xl text-[11px] font-bold border-2 border-slate-200 focus:border-slate-900 outline-none">
+                                <input id="exp-details" type="text" placeholder="Specify details (Name, reason, etc)..." class="w-full p-4 bg-slate-50 rounded-2xl text-[11px] font-bold border-2 border-slate-200 focus:border-slate-900 outline-none">
                             </div>
 
                             <div class="flex gap-2">
@@ -218,6 +224,7 @@
         let currentDate = new Date(2026, 0, 2); 
         let activeDay = 'sun';
         let currentData = { revenue: {}, expenses: [], status: 'open' };
+        let unsubscribe = null;
 
         window.onload = async () => {
             firebase.initializeApp(firebaseConfig);
@@ -225,7 +232,6 @@
             auth = firebase.auth();
             await auth.signInAnonymously();
             
-            // Adjust current date to today's relative week ending if needed
             const now = new Date();
             if (now > currentDate) {
                 const diff = now.getTime() - currentDate.getTime();
@@ -249,7 +255,8 @@
         function handleCategoryChange() {
             const cat = document.getElementById('exp-cat').value;
             const container = document.getElementById('misc-details-container');
-            if (cat === "Other/Misc") {
+            // Show detail box for Misc OR Guest Psalmist
+            if (cat === "Other/Misc" || cat === "Guest Psalmist") {
                 container.classList.add('show');
             } else {
                 container.classList.remove('show');
@@ -258,7 +265,6 @@
 
         function changeDate(days) {
             currentDate.setDate(currentDate.getDate() + days);
-            // Reset state before loading new date to prevent data bleeding
             resetLocalState();
             loadWeekData();
         }
@@ -270,6 +276,7 @@
             document.getElementById('exp-details').value = '';
             document.getElementById('exp-cat').selectedIndex = 0;
             handleCategoryChange();
+            updateUI();
         }
 
         function setActiveDay(day) {
@@ -279,7 +286,6 @@
             updateUI();
         }
 
-        let unsubscribe = null;
         function loadWeekData() {
             const dateStr = (currentDate.getMonth() + 1) + '-' + currentDate.getDate() + '-' + currentDate.getFullYear().toString().slice(-2);
             document.getElementById('display-date').innerText = dateStr;
@@ -294,19 +300,17 @@
                     if (!currentData.expenses) currentData.expenses = [];
                     if (!currentData.revenue) currentData.revenue = {};
                 } else {
-                    // Start fresh for new dates
                     currentData = { revenue: {}, expenses: [], status: 'open' };
                 }
                 updateUI();
             }, (error) => {
-                console.error("Firestore Error:", error);
+                console.error("Firestore Fetch Error:", error);
             });
         }
 
         function updateUI() {
             const isLocked = currentData.status === 'submitted';
             
-            // UI elements update based on locked state
             document.getElementById('add-exp-btn').disabled = isLocked;
             document.getElementById('add-exp-btn').style.opacity = isLocked ? '0.3' : '1';
             document.getElementById('exp-cat').disabled = isLocked;
@@ -315,6 +319,7 @@
 
             const grid = document.getElementById('income-grid');
             grid.innerHTML = '';
+            
             INCOME_CATEGORIES.forEach(cat => {
                 const storageKey = `${activeDay}_${cat.replace(/[\/\s]+/g, '_').toLowerCase()}`;
                 const val = currentData.revenue?.[storageKey] || '';
@@ -379,7 +384,10 @@
             let totalIn = 0;
             if (currentData.revenue) {
                 Object.keys(currentData.revenue).forEach(key => {
-                    if (key !== 'bank_balance') totalIn += parseFloat(currentData.revenue[key] || 0);
+                    if (key !== 'bank_balance') {
+                        const val = parseFloat(currentData.revenue[key]);
+                        if (!isNaN(val)) totalIn += val;
+                    }
                 });
             }
 
@@ -398,35 +406,39 @@
         }
 
         async function updateRevenue(fieldId, val) {
+            if (currentData.status === 'submitted') return;
             if (!currentData.revenue) currentData.revenue = {};
             currentData.revenue[fieldId] = val;
             save();
         }
 
         async function addExpense() {
+            if (currentData.status === 'submitted') return;
             const cat = document.getElementById('exp-cat').value;
             const details = document.getElementById('exp-details').value;
             const amtInput = document.getElementById('exp-amt');
             const amt = amtInput.value;
             if(!amt || isNaN(parseFloat(amt))) return;
-            if (cat === "Other/Misc" && !details.trim()) {
-                alert("Please specify the reason for 'Other/Misc' expense.");
+            
+            if ((cat === "Other/Misc" || cat === "Guest Psalmist") && !details.trim()) {
+                alert(`Please specify the details for ${cat}.`);
                 document.getElementById('exp-details').focus();
                 return;
             }
+            
             if (!Array.isArray(currentData.expenses)) currentData.expenses = [];
             currentData.expenses.unshift({ category: cat, details: details.trim(), amount: parseFloat(amt), id: Date.now() });
+            
             amtInput.value = '';
             document.getElementById('exp-details').value = '';
             document.getElementById('exp-cat').selectedIndex = 0;
             handleCategoryChange();
-            updateUI();
             save();
         }
 
         async function removeExpense(idx) {
+            if (currentData.status === 'submitted') return;
             currentData.expenses.splice(idx, 1);
-            updateUI();
             save();
         }
 
@@ -439,7 +451,6 @@
         function sealReport() {
             if(confirm("Confirm: Seal this report? No further changes allowed.")) {
                 currentData.status = 'submitted';
-                updateUI();
                 save();
             }
         }

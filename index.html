@@ -2,533 +2,493 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Voices South Financial Portal</title>
-    
-    <!-- Scripts -->
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- Firebase SDKs -->
-    <script type="importmap">
-      {
-        "imports": {
-          "firebase/app": "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js",
-          "firebase/auth": "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js",
-          "firebase/firestore": "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js"
-        }
-      }
-    </script>
-
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #f1f5f9; color: #1e293b; margin: 0; overflow-x: hidden; }
-        .hidden { display: none !important; }
-        .custom-scroll::-webkit-scrollbar { width: 5px; }
-        .custom-scroll::-webkit-scrollbar-track { background: transparent; }
-        .custom-scroll::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+        .glass-card { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 24px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05); }
+        .btn-toggle { transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
+        .btn-toggle.active { background-color: #1e293b; color: white; transform: scale(1.05); }
+        .input-inset { background: #f1f5f9; border: 2px solid transparent; transition: all 0.2s; }
+        .input-inset:focus { background: white; border-color: #3b82f6; outline: none; box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1); }
+        .gradient-border { height: 4px; background: linear-gradient(90deg, #3b82f6, #10b981); border-radius: 2px; margin-bottom: 1rem; }
         
-        input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-        
-        .income-input {
-            width: 100%;
-            text-align: right;
-            background: transparent;
-            font-weight: 900;
-            font-size: 1.15rem;
-            outline: none;
-            border: none;
-            color: #0f172a;
-        }
-        .day-tab {
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-            border: 1px solid #e2e8f0;
-            background: white;
-        }
-        .day-tab.active {
-            background-color: #1e293b;
-            color: white;
-            border-color: #1e293b;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        }
-        .glass-card {
-            background: white;
-            border-radius: 2rem;
-            border: 1px solid rgba(226, 232, 240, 0.8);
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.04);
-        }
-        
-        #misc-details-container {
-            transition: all 0.3s ease-in-out;
-            max-height: 0;
-            opacity: 0;
-            overflow: hidden;
-        }
-        #misc-details-container.show {
-            max-height: 100px;
-            opacity: 1;
-            margin-bottom: 0.75rem;
-            margin-top: 0.5rem;
-        }
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
-        /* Modal Styles */
-        .modal-overlay {
-            background: rgba(15, 23, 42, 0.8);
-            backdrop-filter: blur(4px);
-        }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-in { animation: fadeIn 0.4s ease-out forwards; }
     </style>
 </head>
-<body class="min-h-screen">
+<body class="min-h-screen text-slate-800">
 
-    <!-- LOGIN SCREEN -->
-    <div id="login-screen" class="fixed inset-0 bg-slate-900 flex items-center justify-center p-4 z-[100]">
-        <div class="w-full max-w-md bg-white rounded-[2.5rem] p-10 text-slate-900 shadow-2xl text-center">
-            <div class="w-16 h-16 bg-slate-900 rounded-2xl flex items-center justify-center text-white mx-auto mb-6">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+<div id="app" class="max-w-6xl mx-auto p-4 md:p-8">
+    <!-- Loading State -->
+    <div id="loading-overlay" class="fixed inset-0 bg-white flex items-center justify-center z-50">
+        <div class="text-center">
+            <div class="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+            <p class="text-slate-500 font-medium">Connecting to Secure Portal...</p>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="flex justify-between items-center mb-8">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 bg-slate-900 rounded-lg flex items-center justify-center text-white font-bold text-xl">V</div>
+            <h1 class="text-xl font-bold tracking-tight text-slate-900">VOICES SOUTH FINANCIALS</h1>
+        </div>
+        <button onclick="handleLogout()" class="text-xs font-semibold text-slate-400 hover:text-red-500 uppercase tracking-widest transition-colors">Logout</button>
+    </header>
+
+    <!-- Date Selector -->
+    <div class="glass-card p-6 mb-8 relative overflow-hidden">
+        <div class="gradient-border absolute top-0 left-0 w-full"></div>
+        <div class="flex items-center justify-between max-w-lg mx-auto">
+            <button onclick="changeDate(-7)" class="p-2 hover:bg-slate-100 rounded-full transition-colors">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7"/></svg>
+            </button>
+            <div class="text-center">
+                <div id="display-date" class="text-4xl font-black text-slate-900 mb-1">...</div>
+                <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Week Ending Friday</div>
             </div>
-            <h1 class="text-2xl font-black uppercase tracking-tighter mb-2">Voices South</h1>
-            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-8">Financial Portal Access</p>
-            <div class="space-y-3">
-                <input id="login-id" type="text" placeholder="Admin ID" class="w-full px-5 py-4 bg-slate-100 rounded-xl font-bold border-2 border-transparent focus:border-slate-900 transition-all outline-none">
-                <input id="login-pw" type="password" placeholder="Password" class="w-full px-5 py-4 bg-slate-100 rounded-xl font-bold border-2 border-transparent focus:border-slate-900 transition-all outline-none">
-                <p id="login-error" class="text-rose-500 text-[10px] font-bold uppercase hidden">Invalid Credentials</p>
-                <button onclick="handleLogin()" class="w-full bg-slate-900 text-white py-4 rounded-xl font-black uppercase tracking-widest hover:scale-[1.02] active:scale-95 transition-all mt-4">Login</button>
+            <button onclick="changeDate(7)" class="p-2 hover:bg-slate-100 rounded-full transition-colors">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"/></svg>
+            </button>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <!-- Income Entry -->
+        <section class="glass-card p-8 animate-in">
+            <div class="flex items-center gap-2 mb-6">
+                <div class="w-2 h-2 rounded-full bg-emerald-500"></div>
+                <h2 class="text-sm font-bold uppercase tracking-widest text-slate-400">Weekly Income Entry</h2>
+            </div>
+
+            <!-- Day Selector -->
+            <div class="flex gap-2 mb-8 overflow-x-auto pb-2">
+                <button onclick="setDay('SUN')" id="btn-sun" class="btn-toggle flex-1 py-3 px-4 rounded-xl text-xs font-bold uppercase tracking-tighter bg-white border border-slate-200">Sun</button>
+                <button onclick="setDay('TUE')" id="btn-tue" class="btn-toggle flex-1 py-3 px-4 rounded-xl text-xs font-bold uppercase tracking-tighter bg-white border border-slate-200">Tue</button>
+                <button onclick="setDay('EOW')" id="btn-eow" class="btn-toggle flex-1 py-3 px-4 rounded-xl text-xs font-bold uppercase tracking-tighter bg-white border border-slate-200">EOW</button>
+                <button onclick="setDay('EOM')" id="btn-eom" class="btn-toggle flex-1 py-3 px-4 rounded-xl text-xs font-bold uppercase tracking-tighter bg-white border border-slate-200">EOM</button>
+            </div>
+
+            <div id="income-inputs" class="space-y-6">
+                <!-- Inputs will be generated here -->
+            </div>
+
+            <div class="mt-8 pt-8 border-t border-slate-100">
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Bank Balance (Statement Closing)</label>
+                <div class="relative">
+                    <span class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 font-bold">$</span>
+                    <input type="number" id="bank-balance" oninput="updateIncome('bankBalance', this.value)" placeholder="0.00" class="w-full input-inset p-4 pl-8 rounded-2xl font-bold text-slate-900 text-lg">
+                </div>
+            </div>
+        </section>
+
+        <div class="space-y-8">
+            <!-- Expense Entry -->
+            <section class="glass-card p-8 animate-in" style="animation-delay: 0.1s">
+                <div class="flex items-center gap-2 mb-6">
+                    <div class="w-2 h-2 rounded-full bg-rose-500"></div>
+                    <h2 class="text-sm font-bold uppercase tracking-widest text-slate-400">Log Expense</h2>
+                </div>
+                
+                <div class="space-y-4">
+                    <input type="text" id="exp-desc" placeholder="Expense Description (e.g. Utilities)" class="w-full input-inset p-4 rounded-2xl font-semibold text-slate-700">
+                    <div class="flex gap-4">
+                        <div class="relative flex-1">
+                            <span class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 font-bold">$</span>
+                            <input type="number" id="exp-amount" placeholder="0.00" class="w-full input-inset p-4 pl-8 rounded-2xl font-bold text-slate-900 text-xl">
+                        </div>
+                        <button onclick="addExpense()" class="bg-slate-900 text-white w-16 rounded-2xl flex items-center justify-center hover:bg-slate-800 transition-transform active:scale-95 shadow-lg">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 4v16m8-8H4"/></svg>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Expense Log -->
+            <section class="glass-card p-8 animate-in" style="animation-delay: 0.2s">
+                <div class="flex justify-between items-center mb-6">
+                    <div class="flex items-center gap-2">
+                        <div class="w-2 h-2 rounded-full bg-slate-300"></div>
+                        <h2 class="text-sm font-bold uppercase tracking-widest text-slate-400">Weekly Log</h2>
+                    </div>
+                    <span id="total-out" class="bg-rose-50 text-rose-600 px-3 py-1 rounded-full text-[10px] font-black uppercase">$0.00 OUT</span>
+                </div>
+                
+                <div id="expense-list" class="space-y-3 max-h-[300px] overflow-y-auto pr-2">
+                    <!-- List items here -->
+                    <div class="text-center py-8 text-slate-300 italic text-sm">No expenses logged for this week</div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <!-- Sticky Net Sum Bar -->
+    <div class="fixed bottom-8 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-4xl z-40">
+        <div class="bg-slate-900 text-white p-6 md:p-8 rounded-[32px] shadow-2xl flex flex-col md:flex-row items-center justify-between gap-6 border border-white/10">
+            <div>
+                <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Weekly Cash Flow (Net Sum)</div>
+                <div id="net-sum" class="text-4xl md:text-5xl font-black text-emerald-400 tracking-tighter">$0.00</div>
+            </div>
+            <button onclick="finalizeWeek()" class="w-full md:w-auto px-10 py-4 bg-white text-slate-900 font-black rounded-2xl uppercase tracking-widest hover:bg-slate-100 transition-all active:scale-95 shadow-xl">
+                Finalize Week
+            </button>
+        </div>
+    </div>
+
+    <!-- Custom Modal -->
+    <div id="custom-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] hidden items-center justify-center p-4">
+        <div class="glass-card max-w-md w-full p-8 shadow-2xl">
+            <h3 id="modal-title" class="text-xl font-bold mb-2">Message</h3>
+            <p id="modal-body" class="text-slate-500 mb-8 leading-relaxed"></p>
+            <div class="flex gap-3 justify-end" id="modal-footer">
+                <!-- Action buttons -->
             </div>
         </div>
     </div>
 
-    <!-- MAIN DASHBOARD -->
-    <div id="dashboard-screen" class="hidden min-h-screen pb-48 md:pb-40">
-        <nav class="bg-white/80 backdrop-blur-md border-b p-4 sticky top-0 z-50 flex justify-between items-center px-4 md:px-8">
-            <div class="flex items-center gap-3">
-                <div class="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center text-white text-[10px] font-black">V</div>
-                <span class="font-black text-xs uppercase tracking-widest text-slate-900 hidden sm:inline">Voices South Financials</span>
-            </div>
-            <button onclick="location.reload()" class="text-[10px] font-black uppercase text-slate-400 hover:text-rose-500 transition-colors">Logout</button>
-        </nav>
+    <div class="h-40"></div> <!-- Spacer for sticky bar -->
+</div>
 
-        <div class="max-w-6xl mx-auto p-4 md:p-6 space-y-6">
-            <!-- Date Navigation -->
-            <div class="glass-card p-6 md:p-8 text-center relative overflow-hidden">
-                <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-emerald-500"></div>
-                <div class="flex items-center justify-between max-w-sm mx-auto">
-                    <button onclick="changeDate(-7)" class="p-3 hover:bg-slate-100 rounded-full transition-all active:scale-90">
-                        <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
-                    </button>
-                    <div>
-                        <h2 id="display-date" class="text-3xl md:text-4xl font-black tracking-tighter italic text-slate-900">...</h2>
-                        <p class="text-[9px] font-black text-slate-400 uppercase tracking-[0.3em] mt-1">Week Ending Friday</p>
-                    </div>
-                    <button onclick="changeDate(7)" class="p-3 hover:bg-slate-100 rounded-full transition-all active:scale-90">
-                        <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
-                    </button>
-                </div>
-            </div>
+<!-- Firebase SDKs -->
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, onAuthStateChanged, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, doc, setDoc, getDoc, collection, onSnapshot, addDoc, deleteDoc, query, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <!-- REVENUE SECTION -->
-                <div class="glass-card p-6 md:p-8 flex flex-col">
-                    <div class="flex justify-between items-center mb-6">
-                        <h3 class="font-black text-[11px] uppercase tracking-[0.2em] text-slate-400 flex items-center gap-2">
-                            <span class="w-2 h-2 rounded-full bg-emerald-500"></span> Weekly Income Entry
-                        </h3>
-                    </div>
-                    
-                    <div class="grid grid-cols-4 gap-2 mb-8">
-                        <button onclick="setActiveDay('sun')" id="tab-sun" class="day-tab px-1 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest active">Sun</button>
-                        <button onclick="setActiveDay('tue')" id="tab-tue" class="day-tab px-1 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest">Tue</button>
-                        <button onclick="setActiveDay('eow')" id="tab-eow" class="day-tab px-1 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest">EOW</button>
-                        <button onclick="setActiveDay('eom')" id="tab-eom" class="day-tab px-1 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest">EOM</button>
-                    </div>
+    // --- SETUP & CONFIG ---
+    const firebaseConfig = JSON.parse(__firebase_config);
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'voices-south-financials';
 
-                    <div id="income-grid" class="space-y-3 flex-1">
-                        <!-- Populated by JS -->
-                    </div>
+    // State
+    let user = null;
+    let currentWeekDate = getNearestFriday(new Date());
+    let currentDay = 'SUN';
+    let weeklyData = {
+        income: {
+            'SUN': {}, 'TUE': {}, 'EOW': {}, 'EOM': {}
+        },
+        expenses: [],
+        bankBalance: 0,
+        finalized: false
+    };
 
-                    <div class="mt-8 pt-6 border-t border-slate-100">
-                        <div class="flex justify-between items-center bg-slate-50 p-5 rounded-3xl">
-                            <div>
-                                <span class="text-[9px] font-black uppercase text-slate-400 block tracking-widest">Bank Balance</span>
-                                <span class="text-[8px] text-slate-300 uppercase font-bold">Closing Statement</span>
-                            </div>
-                            <div class="flex items-center w-36">
-                                <span class="text-sm font-bold text-slate-300 mr-2">$</span>
-                                <input type="number" id="in-bank_balance" step="0.01" class="income-input text-slate-900" onchange="window.updateRevenue('bank_balance', this.value)">
-                            </div>
-                        </div>
-                    </div>
-                </div>
+    const categories = [
+        { id: 'cash', label: 'Cash/Checks' },
+        { id: 'cards', label: 'Credit/Debit Cards' },
+        { id: 'text', label: 'Text' },
+        { id: 'givelify', label: 'Givelify' },
+        { id: 'tithely', label: 'Tithely' },
+        { id: 'cashapp', label: 'CashApp' },
+        { id: 'zelle', label: 'Zelle' },
+        { id: 'website', label: 'Website Giving' }
+    ];
 
-                <!-- EXPENSE SECTION -->
-                <div class="space-y-6 flex flex-col">
-                    <div class="glass-card p-6 md:p-8">
-                        <h3 class="font-black text-[11px] uppercase tracking-[0.2em] text-slate-400 mb-6 flex items-center gap-2">
-                            <span class="w-2 h-2 rounded-full bg-rose-500"></span> Log Expense
-                        </h3>
-                        <div class="space-y-3">
-                            <select id="exp-cat" onchange="window.handleCategoryChange()" class="w-full p-4 bg-slate-50 rounded-2xl text-[11px] font-black uppercase tracking-wider border-2 border-transparent focus:border-slate-900 outline-none appearance-none">
-                                <option>Mortgage - Kirkland Group</option>
-                                <option>First Citizens Bank</option>
-                                <option>Pastor Payroll</option>
-                                <option>Lady Val Payroll</option>
-                                <option>Admin Payroll Taxes</option>
-                                <option>Band Payroll</option>
-                                <option>Georgia Power</option>
-                                <option>Georgia Natural Gas</option>
-                                <option>Spectrum</option>
-                                <option>Henry County Water</option>
-                                <option>TMobile</option>
-                                <option>Ministry Design</option>
-                                <option>Quickbooks</option>
-                                <option>GFL Environmental</option>
-                                <option>Brotherhood Mutual Property</option>
-                                <option>Brotherhood Mutual Workers Comp</option>
-                                <option>Team Pest USA</option>
-                                <option>Pastors Love offering</option>
-                                <option>Guest Psalmist</option>
-                                <option>Other/Misc</option>
-                            </select>
-                            
-                            <div id="misc-details-container">
-                                <input id="exp-details" type="text" placeholder="Specify details (Name, reason, etc)..." class="w-full p-4 bg-slate-50 rounded-2xl text-[11px] font-bold border-2 border-slate-200 focus:border-slate-900 outline-none">
-                            </div>
-
-                            <div class="flex gap-2">
-                                <input id="exp-amt" type="number" step="0.01" placeholder="0.00" class="flex-1 p-4 bg-slate-50 rounded-2xl font-black text-xl border-2 border-transparent focus:border-slate-900 outline-none">
-                                <button onclick="window.addExpense()" id="add-exp-btn" class="bg-slate-900 text-white px-8 rounded-2xl font-black text-2xl hover:bg-slate-800 active:scale-95 transition-all shadow-xl">+</button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="glass-card p-6 md:p-8 flex-1 flex flex-col min-h-[350px]">
-                        <div class="flex justify-between items-center mb-6">
-                            <h3 class="font-black text-[11px] uppercase tracking-[0.2em] text-slate-400">Weekly Log</h3>
-                            <span id="exp-total-badge" class="text-[10px] font-black text-rose-500 bg-rose-50 px-3 py-1 rounded-full">$0.00 OUT</span>
-                        </div>
-                        <div id="expense-list" class="space-y-2 overflow-y-auto custom-scroll flex-1 pr-2 max-h-[400px]"></div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Footer Summary -->
-            <div class="fixed bottom-4 md:bottom-8 left-1/2 -translate-x-1/2 w-[95%] max-w-4xl bg-slate-900 p-6 md:p-8 rounded-[2rem] md:rounded-[2.5rem] text-white flex flex-col md:flex-row justify-between items-center shadow-2xl gap-4 md:gap-6 z-40">
-                <div class="text-center md:text-left flex-1">
-                    <p class="text-[9px] font-black uppercase text-slate-500 tracking-[0.4em] mb-1">Weekly Cash Flow (Net Sum)</p>
-                    <p id="total-val" class="text-4xl md:text-5xl font-black tracking-tighter italic text-emerald-400">$0.00</p>
-                </div>
-                <div class="flex items-center gap-6 w-full md:w-auto">
-                    <div class="text-right hidden md:block border-r border-slate-800 pr-6">
-                        <p class="text-[9px] font-black uppercase text-slate-500 tracking-widest">Total Income</p>
-                        <p id="total-revenue-sum" class="text-xl font-black text-emerald-500">$0.00</p>
-                    </div>
-                    <button onclick="window.confirmSeal()" id="seal-btn" class="w-full md:w-auto bg-white text-slate-900 px-10 py-4 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-emerald-500 hover:text-white transition-all active:scale-95">
-                        Finalize Week
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Custom Modal for Alerts/Confirms -->
-    <div id="custom-modal" class="fixed inset-0 z-[200] hidden flex items-center justify-center p-4 modal-overlay">
-        <div class="bg-white rounded-[2rem] p-8 max-w-sm w-full text-center shadow-2xl">
-            <div id="modal-icon" class="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4"></div>
-            <h3 id="modal-title" class="font-black uppercase tracking-tight text-lg mb-2">Notice</h3>
-            <p id="modal-body" class="text-slate-500 text-sm font-medium mb-6"></p>
-            <div id="modal-actions" class="flex gap-3">
-                <button onclick="closeModal()" class="flex-1 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest border-2 border-slate-100 text-slate-400">Cancel</button>
-                <button id="modal-confirm-btn" class="flex-1 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest bg-slate-900 text-white">Confirm</button>
-            </div>
-        </div>
-    </div>
-
-    <script type="module">
-        import { initializeApp } from "firebase/app";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
-        import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection } from "firebase/firestore";
-
-        const firebaseConfig = {
-            apiKey: "AIzaSyDb6oFZEStklFT_Dt2riDbQC_IJPHcT304",
-            authDomain: "church-finance-dashboard-40dca.firebaseapp.com",
-            projectId: "church-finance-dashboard-40dca",
-            storageBucket: "church-finance-dashboard-40dca.firebasestorage.app",
-            messagingSenderId: "480863076081",
-            appId: "1:480863076081:web:dd01f7270a7cd158f93350"
-        };
-
-        const INCOME_CATEGORIES = ['Cash/Checks', 'Credit/Debit cards', 'Text', 'Givelify', 'Tithely', 'CashApp', 'Zelle', 'Website giving'];
-        const APP_ID = typeof __app_id !== 'undefined' ? __app_id : 'church-finance-dashboard-40dca';
-        
-        let db, auth, user;
-        let currentDate = getNearestFriday();
-        let activeDay = 'sun';
-        let currentData = { revenue: {}, expenses: [], status: 'open' };
-        let unsubscribe = null;
-
-        function getNearestFriday() {
-            const d = new Date();
-            const day = d.getDay();
-            const diff = (day <= 5) ? (5 - day) : (5 - day + 7);
-            d.setDate(d.getDate() + diff);
-            d.setHours(0,0,0,0);
-            return d;
+    // --- INITIALIZATION ---
+    async function init() {
+        showLoading(true);
+        try {
+            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                await signInWithCustomToken(auth, __initial_auth_token);
+            } else {
+                await signInAnonymously(auth);
+            }
+        } catch (error) {
+            console.error("Auth Error:", error);
+            showModal("Connection Error", "We couldn't connect to the secure server. Please refresh.", [{label: 'Retry', action: () => location.reload()}]);
         }
+    }
 
-        // Initialize Firebase
-        const app = initializeApp(firebaseConfig);
-        db = getFirestore(app);
-        auth = getAuth(app);
+    onAuthStateChanged(auth, (u) => {
+        user = u;
+        if (user) {
+            setupDataListener();
+        }
+    });
 
-        // Auth Listener
-        onAuthStateChanged(auth, (u) => {
-            user = u;
-            if (user && !document.getElementById('dashboard-screen').classList.contains('hidden')) {
-                loadWeekData();
+    // --- DATA FETCHING & SYNC ---
+    let unsubscribe = null;
+    function setupDataListener() {
+        if (!user) return;
+        if (unsubscribe) unsubscribe();
+
+        const dateStr = formatDate(currentWeekDate);
+        updateDisplayDate();
+
+        // Document Path: /artifacts/{appId}/public/data/weeks/{dateStr}
+        const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'weeks', dateStr);
+
+        unsubscribe = onSnapshot(docRef, (docSnap) => {
+            if (docSnap.exists()) {
+                weeklyData = { ...weeklyData, ...docSnap.data() };
+            } else {
+                // Reset state for new date
+                weeklyData = {
+                    income: { 'SUN': {}, 'TUE': {}, 'EOW': {}, 'EOM': {} },
+                    expenses: [],
+                    bankBalance: 0,
+                    finalized: false,
+                    weekEndingDate: dateStr
+                };
+            }
+            renderAll();
+            showLoading(false);
+        }, (error) => {
+            console.error("Firestore Listen Error:", error);
+            showLoading(false);
+            // Don't crash UI, just log it. Usually permission or network.
+        });
+    }
+
+    async function saveData() {
+        if (!user || weeklyData.finalized) return;
+        const dateStr = formatDate(currentWeekDate);
+        const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'weeks', dateStr);
+        
+        try {
+            await setDoc(docRef, {
+                ...weeklyData,
+                updatedAt: new Date().toISOString(),
+                updatedBy: user.uid
+            }, { merge: true });
+        } catch (e) {
+            console.error("Save Error:", e);
+        }
+    }
+
+    // --- UI LOGIC ---
+    function renderAll() {
+        renderDayButtons();
+        renderIncomeInputs();
+        renderExpenses();
+        updateNetSum();
+        
+        const bbInput = document.getElementById('bank-balance');
+        if (bbInput) bbInput.value = weeklyData.bankBalance || '';
+    }
+
+    function renderDayButtons() {
+        ['SUN', 'TUE', 'EOW', 'EOM'].forEach(day => {
+            const btn = document.getElementById(`btn-${day.toLowerCase()}`);
+            if (btn) {
+                if (currentDay === day) btn.classList.add('active');
+                else btn.classList.remove('active');
             }
         });
+    }
 
-        // Expose functions to global scope for HTML onclicks
-        window.handleLogin = () => {
-            const id = document.getElementById('login-id').value;
-            const pw = document.getElementById('login-pw').value;
-            if (id === "voicessouth" && pw === "3894South") {
-                document.getElementById('login-screen').classList.add('hidden');
-                document.getElementById('dashboard-screen').classList.remove('hidden');
-                
-                signInAnonymously(auth).catch(err => console.error("Auth error", err));
-            } else {
-                const err = document.getElementById('login-error');
-                err.classList.remove('hidden');
-                setTimeout(() => err.classList.add('hidden'), 3000);
-            }
-        };
+    function renderIncomeInputs() {
+        const container = document.getElementById('income-inputs');
+        container.innerHTML = categories.map(cat => {
+            const val = weeklyData.income[currentDay]?.[cat.id] || '';
+            return `
+                <div class="space-y-1">
+                    <div class="flex justify-between items-end mb-1">
+                        <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">${cat.label}</label>
+                        <span class="text-[9px] font-bold text-blue-500 uppercase">${currentDay} Entry</span>
+                    </div>
+                    <div class="relative group">
+                        <span class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 font-bold group-focus-within:text-blue-400 transition-colors">$</span>
+                        <input type="number" 
+                            value="${val}"
+                            oninput="window.updateIncome('${cat.id}', this.value)"
+                            placeholder="0.00" 
+                            ${weeklyData.finalized ? 'disabled' : ''}
+                            class="w-full input-inset p-4 pl-8 rounded-2xl font-bold text-slate-900 text-lg ${weeklyData.finalized ? 'opacity-50 cursor-not-allowed' : ''}">
+                        <div class="absolute right-4 top-1/2 -translate-y-1/2 font-black text-slate-200 text-sm">
+                            ${val ? Number(val).toFixed(2) : '0.00'}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
 
-        window.handleCategoryChange = () => {
-            const cat = document.getElementById('exp-cat').value;
-            const container = document.getElementById('misc-details-container');
-            if (cat === "Other/Misc" || cat === "Guest Psalmist") {
-                container.classList.add('show');
-            } else {
-                container.classList.remove('show');
-                document.getElementById('exp-details').value = '';
-            }
-        };
-
-        window.changeDate = (days) => {
-            currentDate.setDate(currentDate.getDate() + days);
-            loadWeekData();
-        };
-
-        window.setActiveDay = (day) => {
-            activeDay = day;
-            document.querySelectorAll('.day-tab').forEach(t => t.classList.remove('active'));
-            document.getElementById('tab-' + day).classList.add('active');
-            updateUI();
-        };
-
-        window.updateRevenue = async (fieldId, val) => {
-            if (currentData.status === 'submitted') return;
-            if (!currentData.revenue) currentData.revenue = {};
-            currentData.revenue[fieldId] = val;
-            save();
-        };
-
-        window.addExpense = async () => {
-            if (currentData.status === 'submitted') return;
-            const cat = document.getElementById('exp-cat').value;
-            const details = document.getElementById('exp-details').value;
-            const amtInput = document.getElementById('exp-amt');
-            const amt = amtInput.value;
-            
-            if(!amt || isNaN(parseFloat(amt))) return;
-            
-            if ((cat === "Other/Misc" || cat === "Guest Psalmist") && !details.trim()) {
-                showModal('Attention', `Please specify details for ${cat}`, 'info');
-                return;
-            }
-            
-            if (!Array.isArray(currentData.expenses)) currentData.expenses = [];
-            currentData.expenses.unshift({ 
-                category: cat, 
-                details: details.trim(), 
-                amount: parseFloat(amt), 
-                id: Date.now() 
-            });
-            
-            amtInput.value = '';
-            document.getElementById('exp-details').value = '';
-            window.handleCategoryChange();
-            save();
-        };
-
-        window.removeExpense = (idx) => {
-            if (currentData.status === 'submitted') return;
-            currentData.expenses.splice(idx, 1);
-            save();
-        };
-
-        window.confirmSeal = () => {
-            if (currentData.status === 'submitted') return;
-            showModal('Seal Report', 'Finalizing will lock this week from any further edits. Proceed?', 'warning', () => {
-                currentData.status = 'submitted';
-                save();
-            });
-        };
-
-        async function loadWeekData() {
-            if (!user) return;
-            const dateStr = `${currentDate.getMonth() + 1}-${currentDate.getDate()}-${currentDate.getFullYear()}`;
-            document.getElementById('display-date').innerText = dateStr;
-
-            if (unsubscribe) unsubscribe();
-
-            const docRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'reports', dateStr);
-            
-            unsubscribe = onSnapshot(docRef, (docSnap) => {
-                if (docSnap.exists()) {
-                    currentData = docSnap.data();
-                    if (!currentData.expenses) currentData.expenses = [];
-                    if (!currentData.revenue) currentData.revenue = {};
-                } else {
-                    currentData = { revenue: {}, expenses: [], status: 'open' };
-                }
-                updateUI();
-            }, (error) => console.error("Snapshot Error:", error));
+    function renderExpenses() {
+        const container = document.getElementById('expense-list');
+        const totalOutEl = document.getElementById('total-out');
+        
+        if (!weeklyData.expenses || weeklyData.expenses.length === 0) {
+            container.innerHTML = `<div class="text-center py-8 text-slate-300 italic text-sm">No expenses logged for this week</div>`;
+            totalOutEl.innerText = `$0.00 OUT`;
+            return;
         }
 
-        function updateUI() {
-            const isLocked = currentData.status === 'submitted';
-            
-            // Update Form States
-            document.getElementById('add-exp-btn').disabled = isLocked;
-            document.getElementById('add-exp-btn').style.opacity = isLocked ? '0.3' : '1';
-            document.querySelectorAll('input, select').forEach(el => {
-                if(el.id !== 'login-id' && el.id !== 'login-pw') el.disabled = isLocked;
-            });
-
-            // Update Income Grid
-            const grid = document.getElementById('income-grid');
-            grid.innerHTML = '';
-            
-            INCOME_CATEGORIES.forEach(cat => {
-                const storageKey = `${activeDay}_${cat.replace(/[\/\s]+/g, '_').toLowerCase()}`;
-                const val = currentData.revenue?.[storageKey] || '';
-                const itemDiv = document.createElement('div');
-                itemDiv.className = "flex justify-between items-center bg-slate-50 p-4 rounded-2xl border border-transparent hover:border-slate-200 transition-all";
-                itemDiv.innerHTML = `
+        let totalOut = 0;
+        container.innerHTML = weeklyData.expenses.map((exp, idx) => {
+            totalOut += Number(exp.amount);
+            return `
+                <div class="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-2xl group hover:border-slate-200 transition-all">
                     <div>
-                        <span class="text-[9px] font-black uppercase text-slate-400 block tracking-widest">${cat}</span>
-                        <span class="text-[8px] font-bold text-indigo-400 uppercase">${activeDay} Entry</span>
+                        <div class="font-bold text-slate-800">${exp.description}</div>
+                        <div class="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Logged by System</div>
                     </div>
-                    <div class="flex items-center w-36">
-                        <span class="text-sm font-bold text-slate-300 mr-2">$</span>
-                        <input type="number" step="0.01" value="${val}" placeholder="0.00" 
-                            class="income-input ${isLocked ? 'opacity-50' : ''}">
-                    </div>
-                `;
-                const input = itemDiv.querySelector('input');
-                input.onchange = (e) => window.updateRevenue(storageKey, e.target.value);
-                grid.appendChild(itemDiv);
-            });
-
-            document.getElementById('in-bank_balance').value = currentData.revenue?.bank_balance || '';
-
-            // Update Expense List
-            const list = document.getElementById('expense-list');
-            list.innerHTML = '';
-            let totalOut = 0;
-            
-            if (currentData.expenses.length === 0) {
-                list.innerHTML = `<div class="flex flex-col items-center justify-center py-12 text-slate-300">
-                    <span class="text-[10px] font-black uppercase tracking-widest">No Transactions Logged</span>
-                </div>`;
-            } else {
-                currentData.expenses.forEach((exp, i) => {
-                    const amt = parseFloat(exp.amount || 0);
-                    totalOut += amt;
-                    const displayName = exp.details ? `${exp.category}: ${exp.details}` : exp.category;
-                    const expRow = document.createElement('div');
-                    expRow.className = "flex justify-between items-center p-4 bg-slate-50 rounded-2xl border border-slate-100";
-                    expRow.innerHTML = `
-                        <div class="flex items-center gap-3">
-                            <div class="w-8 h-8 rounded-lg bg-rose-50 flex items-center justify-center text-rose-500">
-                                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="M19 14l-7 7-7-7"/></svg>
-                            </div>
-                            <div class="max-w-[140px] md:max-w-none">
-                                <p class="text-[10px] font-black uppercase text-slate-600 truncate">${displayName}</p>
-                                <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Expense</p>
-                            </div>
-                        </div>
-                        <div class="flex items-center gap-4">
-                            <p class="text-sm font-black text-rose-500">-$${amt.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
-                            <button class="${isLocked ? 'hidden' : ''} text-slate-300 hover:text-rose-600 p-1">
-                                <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
+                    <div class="flex items-center gap-4">
+                        <span class="font-black text-rose-500">-$${Number(exp.amount).toFixed(2)}</span>
+                        ${!weeklyData.finalized ? `
+                            <button onclick="window.removeExpense(${idx})" class="text-slate-300 hover:text-rose-500 transition-colors">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                             </button>
-                        </div>
-                    `;
-                    if (!isLocked) expRow.querySelector('button').onclick = () => window.removeExpense(i);
-                    list.appendChild(expRow);
-                });
-            }
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+        
+        totalOutEl.innerText = `$${totalOut.toFixed(2)} OUT`;
+    }
 
-            // Totals
-            let totalIn = 0;
-            Object.keys(currentData.revenue || {}).forEach(key => {
-                if (key !== 'bank_balance') {
-                    const val = parseFloat(currentData.revenue[key]);
-                    if (!isNaN(val)) totalIn += val;
-                }
+    function updateNetSum() {
+        let totalIncome = 0;
+        Object.keys(weeklyData.income).forEach(day => {
+            Object.values(weeklyData.income[day]).forEach(val => {
+                totalIncome += Number(val || 0);
             });
+        });
 
-            const net = totalIn - totalOut;
-            document.getElementById('exp-total-badge').innerText = `$${totalOut.toLocaleString(undefined, {minimumFractionDigits: 2})} OUT`;
-            document.getElementById('total-revenue-sum').innerText = `$${totalIn.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-            
-            const totalEl = document.getElementById('total-val');
-            totalEl.innerText = (net < 0 ? '-' : '') + '$' + Math.abs(net).toLocaleString(undefined, {minimumFractionDigits: 2});
-            totalEl.className = `text-4xl md:text-5xl font-black tracking-tighter italic ${net < 0 ? 'text-rose-500' : 'text-emerald-400'}`;
+        let totalExpense = 0;
+        weeklyData.expenses.forEach(exp => {
+            totalExpense += Number(exp.amount || 0);
+        });
 
-            const sealBtn = document.getElementById('seal-btn');
-            sealBtn.innerText = isLocked ? "Week Sealed" : "Finalize Week";
-            sealBtn.disabled = isLocked;
-            sealBtn.style.opacity = isLocked ? '0.4' : '1';
-        }
+        const net = totalIncome - totalExpense;
+        const el = document.getElementById('net-sum');
+        el.innerText = (net < 0 ? '-$' : '$') + Math.abs(net).toFixed(2);
+        
+        if (net < 0) el.classList.replace('text-emerald-400', 'text-rose-400');
+        else el.classList.replace('text-rose-400', 'text-emerald-400');
+    }
 
-        async function save() {
-            if (!user) return;
-            const dateStr = `${currentDate.getMonth() + 1}-${currentDate.getDate()}-${currentDate.getFullYear()}`;
-            const docRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'reports', dateStr);
-            try {
-                await setDoc(docRef, currentData);
-            } catch (e) {
-                console.error("Save error", e);
-            }
-        }
+    // --- ACTIONS (Exposed to Window) ---
+    window.setDay = (day) => {
+        currentDay = day;
+        renderAll();
+    };
 
-        // UI Helpers
-        function showModal(title, body, type, onConfirm) {
-            const m = document.getElementById('custom-modal');
-            const t = document.getElementById('modal-title');
-            const b = document.getElementById('modal-body');
-            const icon = document.getElementById('modal-icon');
-            const confirmBtn = document.getElementById('modal-confirm-btn');
-            
-            t.innerText = title;
-            b.innerText = body;
-            m.classList.remove('hidden');
-            
-            if (type === 'warning') icon.innerHTML = '⚠️';
-            else icon.innerHTML = 'ℹ️';
+    window.changeDate = (days) => {
+        currentWeekDate.setDate(currentWeekDate.getDate() + days);
+        setupDataListener(); // Refetch for new date
+    };
 
-            confirmBtn.onclick = () => {
-                if (onConfirm) onConfirm();
-                closeModal();
-            };
-        }
+    window.updateIncome = (catId, val) => {
+        if (!weeklyData.income[currentDay]) weeklyData.income[currentDay] = {};
+        weeklyData.income[currentDay][catId] = val;
+        updateNetSum();
+        saveData();
+    };
 
-        window.closeModal = () => {
-            document.getElementById('custom-modal').classList.add('hidden');
-        };
+    window.addExpense = async () => {
+        const desc = document.getElementById('exp-desc');
+        const amt = document.getElementById('exp-amount');
+        if (!desc.value || !amt.value) return;
 
-    </script>
+        weeklyData.expenses.push({
+            description: desc.value,
+            amount: Number(amt.value),
+            timestamp: new Date().toISOString()
+        });
+
+        desc.value = '';
+        amt.value = '';
+        renderAll();
+        await saveData();
+    };
+
+    window.removeExpense = async (index) => {
+        weeklyData.expenses.splice(index, 1);
+        renderAll();
+        await saveData();
+    };
+
+    window.finalizeWeek = () => {
+        showModal(
+            "Finalize Records?", 
+            "Finalizing will lock all entries for this week ending Friday. You won't be able to edit income or expenses after this.", 
+            [
+                { label: 'Cancel', action: hideModal, type: 'secondary' },
+                { label: 'Finalize Now', action: async () => {
+                    weeklyData.finalized = true;
+                    await saveData();
+                    hideModal();
+                    renderAll();
+                }, type: 'primary' }
+            ]
+        );
+    };
+
+    window.handleLogout = () => {
+        auth.signOut().then(() => location.reload());
+    };
+
+    // --- UTILS ---
+    function getNearestFriday(d) {
+        const date = new Date(d);
+        const day = date.getDay();
+        const diff = (day <= 5) ? (5 - day) : (12 - day); // Friday is 5
+        date.setDate(date.getDate() + diff);
+        date.setHours(0,0,0,0);
+        return date;
+    }
+
+    function formatDate(d) {
+        const month = d.getMonth() + 1;
+        const day = d.getDate();
+        const year = d.getFullYear().toString().substr(-2);
+        return `${month}-${day}-${year}`;
+    }
+
+    function updateDisplayDate() {
+        const el = document.getElementById('display-date');
+        if (el) el.innerText = formatDate(currentWeekDate);
+    }
+
+    function showLoading(show) {
+        document.getElementById('loading-overlay').style.display = show ? 'flex' : 'none';
+    }
+
+    function showModal(title, body, actions) {
+        document.getElementById('modal-title').innerText = title;
+        document.getElementById('modal-body').innerText = body;
+        const footer = document.getElementById('modal-footer');
+        footer.innerHTML = '';
+        actions.forEach(a => {
+            const b = document.createElement('button');
+            b.innerText = a.label;
+            b.className = a.type === 'primary' 
+                ? "px-6 py-3 bg-slate-900 text-white font-bold rounded-xl text-sm" 
+                : "px-6 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl text-sm";
+            b.onclick = a.action;
+            footer.appendChild(b);
+        });
+        document.getElementById('custom-modal').style.display = 'flex';
+    }
+
+    function hideModal() {
+        document.getElementById('custom-modal').style.display = 'none';
+    }
+
+    // Attach bank balance listener
+    const bb = document.getElementById('bank-balance');
+    bb.addEventListener('change', (e) => {
+        weeklyData.bankBalance = e.target.value;
+        saveData();
+    });
+
+    // Run init
+    init();
+
+</script>
+
 </body>
 </html>

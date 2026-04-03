@@ -25,125 +25,128 @@
 </head>
 <body class="min-h-screen text-slate-800">
 
-    <!-- Loading Screen -->
-    <div id="loading-screen" class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-white">
-        <div class="loader mb-4"></div>
-        <p id="loading-text" class="text-slate-500 font-medium">Connecting to Secure Portal...</p>
-        <button id="retry-btn" class="hidden mt-6 px-6 py-2 bg-slate-100 rounded-full text-sm font-semibold hover:bg-slate-200">Continue with Limited Access</button>
+    <!-- Auth / Loading Screen -->
+    <div id="auth-screen" class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-white p-6">
+        <div id="loader-view" class="flex flex-col items-center">
+            <div class="loader mb-4"></div>
+            <p id="loading-text" class="text-slate-500 font-medium text-sm">Initializing Secure Connection...</p>
+        </div>
+
+        <div id="login-view" class="hidden w-full max-w-sm space-y-6 text-center">
+            <div class="bg-slate-900 text-white w-16 h-16 rounded-2xl flex items-center justify-center font-bold text-3xl shadow-xl mx-auto mb-4">V</div>
+            <h1 class="text-2xl font-black text-slate-900 tracking-tight">Portal Access</h1>
+            <p class="text-slate-400 text-sm">Please enter your credentials to manage financials.</p>
+            
+            <div class="space-y-3">
+                <input type="text" id="username" placeholder="Username" class="w-full p-4 rounded-xl input-inset font-semibold text-sm">
+                <input type="password" id="password" placeholder="Password" class="w-full p-4 rounded-xl input-inset font-semibold text-sm">
+                <button onclick="handleLogin()" class="w-full py-4 btn-primary rounded-xl font-bold text-sm shadow-xl">Sign In</button>
+            </div>
+            <p id="auth-error" class="text-rose-500 text-xs font-bold hidden">Invalid credentials. Please try again.</p>
+        </div>
     </div>
 
-    <!-- Header -->
-    <header class="px-6 py-4 flex justify-between items-center bg-white border-b sticky top-0 z-40">
-        <div class="flex items-center gap-3">
-            <div class="bg-slate-900 text-white w-10 h-10 rounded-lg flex items-center justify-center font-bold text-xl shadow-lg">V</div>
-            <h1 class="font-extrabold tracking-tight text-slate-900">VOICES SOUTH FINANCIALS</h1>
-        </div>
-        <button onclick="window.location.reload()" class="text-xs font-bold text-slate-400 hover:text-slate-900 uppercase tracking-widest">Logout</button>
-    </header>
-
-    <main class="max-w-6xl mx-auto p-4 md:p-8 space-y-8">
-        
-        <!-- Date Selector -->
-        <div class="glass-card gradient-border p-8 flex items-center justify-between">
-            <button onclick="changeDate(-7)" class="p-4 hover:bg-slate-100 rounded-2xl transition-colors">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
-            </button>
-            <div class="text-center">
-                <div id="current-date-display" class="text-5xl font-black tracking-tighter text-slate-900">--/--/--</div>
-                <div class="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-2">Week Ending Friday</div>
+    <!-- Main Content (Only visible after login) -->
+    <div id="main-content" class="hidden">
+        <header class="px-6 py-4 flex justify-between items-center bg-white border-b sticky top-0 z-40">
+            <div class="flex items-center gap-3">
+                <div class="bg-slate-900 text-white w-10 h-10 rounded-lg flex items-center justify-center font-bold text-xl shadow-lg">V</div>
+                <h1 class="font-extrabold tracking-tight text-slate-900">VOICES SOUTH FINANCIALS</h1>
             </div>
-            <button onclick="changeDate(7)" class="p-4 hover:bg-slate-100 rounded-2xl transition-colors">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
-            </button>
-        </div>
+            <button onclick="logout()" class="text-xs font-bold text-slate-400 hover:text-slate-900 uppercase tracking-widest">Logout</button>
+        </header>
 
-        <div class="grid md:grid-cols-2 gap-8">
-            <!-- Left: Income Entry -->
-            <div class="glass-card p-8 space-y-6">
-                <div class="flex items-center justify-between mb-2">
-                    <div class="flex items-center gap-2">
-                        <div class="w-2 h-2 rounded-full bg-emerald-500"></div>
-                        <h2 class="text-xs font-bold text-slate-400 uppercase tracking-widest">Weekly Income Entry</h2>
-                    </div>
+        <main class="max-w-6xl mx-auto p-4 md:p-8 space-y-8">
+            <!-- Date Selector -->
+            <div class="glass-card gradient-border p-8 flex items-center justify-between">
+                <button onclick="changeDate(-7)" class="p-4 hover:bg-slate-100 rounded-2xl transition-colors">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                </button>
+                <div class="text-center">
+                    <div id="current-date-display" class="text-5xl font-black tracking-tighter text-slate-900">--/--/--</div>
+                    <div class="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-2">Current Worksheet Date</div>
                 </div>
-
-                <!-- Tabs -->
-                <div class="flex gap-2 mb-8">
-                    <button id="tab-SUN" onclick="setTab('SUN')" class="flex-1 py-3 rounded-xl font-bold text-xs transition-all bg-slate-900 text-white shadow-lg">SUN</button>
-                    <button id="tab-TUE" onclick="setTab('TUE')" class="flex-1 py-3 rounded-xl font-bold text-xs transition-all bg-white text-slate-400 border hover:bg-slate-50">TUE</button>
-                    <button id="tab-EOW" onclick="setTab('EOW')" class="flex-1 py-3 rounded-xl font-bold text-xs transition-all bg-white text-slate-400 border hover:bg-slate-50">EOW</button>
-                    <button id="tab-EOM" onclick="setTab('EOM')" class="flex-1 py-3 rounded-xl font-bold text-xs transition-all bg-white text-slate-400 border hover:bg-slate-50">EOM</button>
-                </div>
-
-                <!-- Income Inputs -->
-                <div id="income-container" class="space-y-4">
-                    <!-- Dynamic inputs injected by JS -->
-                </div>
+                <button onclick="changeDate(7)" class="p-4 hover:bg-slate-100 rounded-2xl transition-colors">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                </button>
             </div>
 
-            <!-- Right: Expenses -->
-            <div class="space-y-8">
-                <!-- Log Expense -->
-                <div class="glass-card p-8">
-                    <div class="flex items-center gap-2 mb-6">
-                        <div class="w-2 h-2 rounded-full bg-rose-500"></div>
-                        <h2 class="text-xs font-bold text-slate-400 uppercase tracking-widest">Log Expense</h2>
-                    </div>
-                    <div class="space-y-4">
-                        <input type="text" id="exp-name" placeholder="Expense Category (e.g. Mortgage)" class="w-full p-4 rounded-xl input-inset font-semibold text-sm">
-                        <div class="flex gap-4">
-                            <input type="number" id="exp-amount" placeholder="0.00" class="flex-1 p-4 rounded-xl input-inset font-bold text-2xl">
-                            <button onclick="addExpense()" class="w-16 h-16 btn-primary rounded-2xl flex items-center justify-center shadow-xl">
-                                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 6v12m6-6H6"/></svg>
-                            </button>
+            <div class="grid md:grid-cols-2 gap-8">
+                <!-- Left: Income Entry -->
+                <div class="glass-card p-8 space-y-6">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="flex items-center gap-2">
+                            <div class="w-2 h-2 rounded-full bg-emerald-500"></div>
+                            <h2 class="text-xs font-bold text-slate-400 uppercase tracking-widest">Weekly Income Entry</h2>
                         </div>
                     </div>
+                    <!-- Tabs -->
+                    <div class="flex gap-2 mb-8">
+                        <button id="tab-SUN" onclick="setTab('SUN')" class="flex-1 py-3 rounded-xl font-bold text-xs transition-all bg-slate-900 text-white shadow-lg">SUN</button>
+                        <button id="tab-TUE" onclick="setTab('TUE')" class="flex-1 py-3 rounded-xl font-bold text-xs transition-all bg-white text-slate-400 border hover:bg-slate-50">TUE</button>
+                        <button id="tab-EOW" onclick="setTab('EOW')" class="flex-1 py-3 rounded-xl font-bold text-xs transition-all bg-white text-slate-400 border hover:bg-slate-50">EOW</button>
+                        <button id="tab-EOM" onclick="setTab('EOM')" class="flex-1 py-3 rounded-xl font-bold text-xs transition-all bg-white text-slate-400 border hover:bg-slate-50">EOM</button>
+                    </div>
+                    <div id="income-container" class="space-y-4"></div>
                 </div>
 
-                <!-- Weekly Log -->
-                <div class="glass-card p-8 min-h-[300px]">
-                    <div class="flex justify-between items-center mb-6">
-                        <h2 class="text-xs font-bold text-slate-400 uppercase tracking-widest">Weekly Log</h2>
-                        <span id="total-out-badge" class="bg-rose-50 text-rose-600 px-3 py-1 rounded-full text-[10px] font-black uppercase">$0.00 OUT</span>
+                <!-- Right: Expenses -->
+                <div class="space-y-8">
+                    <div class="glass-card p-8">
+                        <div class="flex items-center gap-2 mb-6">
+                            <div class="w-2 h-2 rounded-full bg-rose-500"></div>
+                            <h2 class="text-xs font-bold text-slate-400 uppercase tracking-widest">Log Expense</h2>
+                        </div>
+                        <div class="space-y-4">
+                            <input type="text" id="exp-name" placeholder="Expense Category" class="w-full p-4 rounded-xl input-inset font-semibold text-sm">
+                            <div class="flex gap-4">
+                                <input type="number" id="exp-amount" placeholder="0.00" class="flex-1 p-4 rounded-xl input-inset font-bold text-2xl">
+                                <button onclick="addExpense()" class="w-16 h-16 btn-primary rounded-2xl flex items-center justify-center shadow-xl">
+                                    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 6v12m6-6H6"/></svg>
+                                </button>
+                            </div>
+                        </div>
                     </div>
-                    <div id="expenses-list" class="space-y-3">
-                        <p class="text-center text-slate-300 py-12 text-sm italic">No expenses logged for this week.</p>
+
+                    <div class="glass-card p-8 min-h-[300px]">
+                        <div class="flex justify-between items-center mb-6">
+                            <h2 class="text-xs font-bold text-slate-400 uppercase tracking-widest">Weekly Log</h2>
+                            <span id="total-out-badge" class="bg-rose-50 text-rose-600 px-3 py-1 rounded-full text-[10px] font-black uppercase">$0.00 OUT</span>
+                        </div>
+                        <div id="expenses-list" class="space-y-3"></div>
                     </div>
                 </div>
             </div>
-        </div>
 
-        <!-- Bank Balance -->
-        <div class="glass-card p-8">
-            <div class="flex items-center justify-between">
+            <!-- Bank Balance -->
+            <div class="glass-card p-8">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Bank Balance</h2>
+                        <p class="text-[10px] text-slate-300 font-bold uppercase">Statement Closing</p>
+                    </div>
+                    <div class="relative max-w-[200px]">
+                        <span class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 font-bold">$</span>
+                        <input type="number" id="bank-balance" onchange="saveData()" placeholder="0.00" class="w-full pl-8 pr-4 py-3 rounded-xl input-inset font-bold text-xl text-right">
+                    </div>
+                </div>
+            </div>
+            <div class="h-24"></div>
+        </main>
+
+        <div class="fixed bottom-6 left-1/2 -translate-x-1/2 w-full max-w-3xl px-4 z-50">
+            <div class="bg-slate-900 text-white rounded-[2.5rem] p-6 flex items-center justify-between shadow-2xl border border-slate-800">
                 <div>
-                    <h2 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Bank Balance</h2>
-                    <p class="text-[10px] text-slate-300 font-bold uppercase">Statement Closing</p>
+                    <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Weekly Cash Flow</p>
+                    <div id="net-cash-flow" class="text-4xl font-black text-emerald-400 tracking-tighter">$0.00</div>
                 </div>
-                <div class="relative max-w-[200px]">
-                    <span class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 font-bold">$</span>
-                    <input type="number" id="bank-balance" onchange="saveData()" placeholder="0.00" class="w-full pl-8 pr-4 py-3 rounded-xl input-inset font-bold text-xl text-right">
-                </div>
+                <button id="finalize-btn" onclick="finalizeWeek()" class="bg-white text-slate-900 px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-100 transition-colors">
+                    Finalize Week
+                </button>
             </div>
-        </div>
-
-        <div class="h-24"></div> <!-- Spacer -->
-    </main>
-
-    <!-- Bottom Bar -->
-    <div class="fixed bottom-6 left-1/2 -translate-x-1/2 w-full max-w-3xl px-4 z-50">
-        <div class="bg-slate-900 text-white rounded-[2.5rem] p-6 flex items-center justify-between shadow-2xl border border-slate-800">
-            <div>
-                <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Weekly Cash Flow (Net Sum)</p>
-                <div id="net-cash-flow" class="text-4xl font-black text-emerald-400 tracking-tighter">$0.00</div>
-            </div>
-            <button id="finalize-btn" onclick="finalizeWeek()" class="bg-white text-slate-900 px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-100 transition-colors">
-                Finalize Week
-            </button>
         </div>
     </div>
 
-    <!-- Toast UI -->
     <div id="toast" class="fixed top-24 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-6 py-3 rounded-full text-xs font-bold shadow-2xl opacity-0 transition-opacity pointer-events-none z-50">
         Changes Saved
     </div>
@@ -154,39 +157,23 @@
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // Global State
         let db, auth, user;
         let currentTab = 'SUN';
         let currentWeekEnd = null;
-        let weeklyData = {
-            income: {},
-            expenses: [],
-            bankBalance: 0,
-            isFinalized: false
-        };
+        let weeklyData = { revenue: {}, expenses: [], bankBalance: 0, status: 'draft' };
 
-        const INCOME_CATEGORIES = [
-            "Cash/Checks", "Credit/Debit Cards", "Text", "Givelify", 
-            "Tithely", "CashApp", "Zelle", "Website Giving"
-        ];
+        const INCOME_CATEGORIES = ["Cash/Checks", "Credit/Debit Cards", "Text", "Givelify", "Tithely", "CashApp", "Zelle", "Website Giving"];
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'church-financial-dashboard';
 
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'voices-south-financial-v2';
-
-        // --- Initializers ---
+        // --- AUTH & INITIALIZATION ---
 
         async function init() {
-            const timeout = setTimeout(() => {
-                document.getElementById('loading-text').innerText = "Auth delay detected...";
-                document.getElementById('retry-btn').classList.remove('hidden');
-            }, 6000);
-
             try {
                 const firebaseConfig = JSON.parse(__firebase_config);
                 const app = initializeApp(firebaseConfig);
                 auth = getAuth(app);
                 db = getFirestore(app);
 
-                // Standard Auth flow
                 const initAuth = async () => {
                     if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                         await signInWithCustomToken(auth, __initial_auth_token);
@@ -194,41 +181,61 @@
                         await signInAnonymously(auth);
                     }
                 };
-                
                 await initAuth();
 
                 onAuthStateChanged(auth, (u) => {
                     user = u;
                     if (user) {
-                        clearTimeout(timeout);
-                        document.getElementById('loading-screen').classList.add('hidden');
-                        initDate();
-                        renderIncome();
+                        checkSession();
                     }
                 });
-
             } catch (err) {
                 console.error("Initialization Error:", err);
-                // Fallback to local UI if config/auth fails
-                document.getElementById('loading-screen').classList.add('hidden');
-                initDate();
-                renderIncome();
             }
         }
 
-        function initDate() {
-            currentWeekEnd = getNearestFriday(new Date());
-            updateDateUI();
-            loadWeekData();
+        function checkSession() {
+            const isLoggedIn = sessionStorage.getItem('vs_auth') === 'true';
+            document.getElementById('loader-view').classList.add('hidden');
+            if (isLoggedIn) {
+                showMainContent();
+            } else {
+                document.getElementById('login-view').classList.remove('hidden');
+            }
         }
 
-        function getNearestFriday(date) {
-            const d = new Date(date);
-            const day = d.getDay();
-            const diff = (day <= 5) ? (5 - day) : (12 - day);
-            d.setDate(d.getDate() + diff);
-            d.setHours(0, 0, 0, 0);
-            return d;
+        window.handleLogin = () => {
+            const userIn = document.getElementById('username').value;
+            const passIn = document.getElementById('password').value;
+            const errEl = document.getElementById('auth-error');
+
+            if (userIn === 'voicessouth' && passIn === '3894South') {
+                sessionStorage.setItem('vs_auth', 'true');
+                errEl.classList.add('hidden');
+                showMainContent();
+            } else {
+                errEl.classList.remove('hidden');
+            }
+        };
+
+        window.logout = () => {
+            sessionStorage.removeItem('vs_auth');
+            window.location.reload();
+        };
+
+        function showMainContent() {
+            document.getElementById('auth-screen').classList.add('hidden');
+            document.getElementById('main-content').classList.remove('hidden');
+            initDate();
+        }
+
+        // --- DASHBOARD LOGIC ---
+
+        function initDate() {
+            // Monday, March 30, 2026 based on previous context
+            currentWeekEnd = new Date(2026, 2, 30); 
+            updateDateUI();
+            loadWeekData();
         }
 
         window.changeDate = (days) => {
@@ -237,98 +244,74 @@
             loadWeekData();
         };
 
-        function updateDateUI() {
-            const m = currentWeekEnd.getMonth() + 1;
-            const d = currentWeekEnd.getDate();
-            const y = currentWeekEnd.getFullYear().toString().slice(-2);
-            document.getElementById('current-date-display').innerText = `${m}-${d}-${y}`;
+        function getDateKey(date) {
+            return `${date.getMonth() + 1}-${date.getDate()}-${date.getFullYear().toString().slice(-2)}`;
         }
 
-        // --- Data Persistence ---
+        function updateDateUI() {
+            document.getElementById('current-date-display').innerText = getDateKey(currentWeekEnd);
+        }
 
         let unsubscribe = null;
         async function loadWeekData() {
             if (!user) return;
             if (unsubscribe) unsubscribe();
-            
-            const dateStr = currentWeekEnd.toISOString().split('T')[0];
-            
-            // CORRECT PATH FOR SECURITY RULES: /artifacts/{appId}/users/{userId}/weeks/{date}
-            const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'weeks', dateStr);
+            const dateKey = getDateKey(currentWeekEnd);
+            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'church_reports', dateKey);
 
             unsubscribe = onSnapshot(docRef, (docSnap) => {
                 if (docSnap.exists()) {
-                    weeklyData = docSnap.data();
+                    const data = docSnap.data();
+                    weeklyData = {
+                        revenue: data.revenue || {},
+                        expenses: data.expenses || [],
+                        bankBalance: data.bankBalance || 0,
+                        status: data.status || 'draft'
+                    };
                 } else {
-                    weeklyData = { income: {}, expenses: [], bankBalance: 0, isFinalized: false };
+                    weeklyData = { revenue: {}, expenses: [], bankBalance: 0, status: 'draft' };
                 }
                 renderIncome();
                 renderExpenses();
                 updateTotals();
-            }, (error) => {
-                console.error("Firestore Permission/Access Error:", error);
-                // If permission denied, check if we're using public path or user path
-                // This app uses the user-specific path for security
             });
         }
 
         async function saveData() {
             if (!user) return;
+            const dateKey = getDateKey(currentWeekEnd);
+            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'church_reports', dateKey);
             
-            const dateStr = currentWeekEnd.toISOString().split('T')[0];
-            const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'weeks', dateStr);
-            
-            // Sync current screen inputs to memory state
             INCOME_CATEGORIES.forEach(cat => {
                 const id = `in-${cat.replace(/\//g, '-')}`;
                 const el = document.getElementById(id);
                 if (el) {
-                    const val = parseFloat(el.value) || 0;
-                    if (!weeklyData.income[currentTab]) weeklyData.income[currentTab] = {};
-                    weeklyData.income[currentTab][cat] = val;
+                    if (!weeklyData.revenue) weeklyData.revenue = {};
+                    weeklyData.revenue[cat] = parseFloat(el.value) || 0;
                 }
             });
-            
             weeklyData.bankBalance = parseFloat(document.getElementById('bank-balance').value) || 0;
 
             try {
-                await setDoc(docRef, weeklyData);
-                showToast("Data Synced");
-            } catch (err) {
-                console.error("Firestore Write Error:", err);
-            }
+                await setDoc(docRef, { ...weeklyData, lastUpdated: new Date().toISOString() }, { merge: true });
+                showToast("Synced with Cloud");
+            } catch (err) { console.error("Save Error:", err); }
         }
 
-        // --- UI Interactions ---
-
         window.setTab = (tab) => {
-            // Pre-sync current inputs
-            INCOME_CATEGORIES.forEach(cat => {
-                const id = `in-${cat.replace(/\//g, '-')}`;
-                const el = document.getElementById(id);
-                if (el) {
-                    const val = parseFloat(el.value) || 0;
-                    if (!weeklyData.income[currentTab]) weeklyData.income[currentTab] = {};
-                    weeklyData.income[currentTab][cat] = val;
-                }
-            });
-
             currentTab = tab;
             ['SUN', 'TUE', 'EOW', 'EOM'].forEach(t => {
                 const btn = document.getElementById(`tab-${t}`);
-                if (t === tab) {
-                    btn.className = "flex-1 py-3 rounded-xl font-bold text-xs transition-all bg-slate-900 text-white shadow-lg";
-                } else {
-                    btn.className = "flex-1 py-3 rounded-xl font-bold text-xs transition-all bg-white text-slate-400 border hover:bg-slate-50";
-                }
+                btn.className = t === tab 
+                    ? "flex-1 py-3 rounded-xl font-bold text-xs transition-all bg-slate-900 text-white shadow-lg"
+                    : "flex-1 py-3 rounded-xl font-bold text-xs transition-all bg-white text-slate-400 border hover:bg-slate-50";
             });
             renderIncome();
         };
 
         function renderIncome() {
             const container = document.getElementById('income-container');
-            const data = weeklyData.income[currentTab] || {};
-            
+            const data = weeklyData.revenue || {};
             container.innerHTML = INCOME_CATEGORIES.map(cat => {
                 const val = data[cat] || 0;
                 const id = `in-${cat.replace(/\//g, '-')}`;
@@ -340,50 +323,36 @@
                         </div>
                         <div class="flex items-center gap-3">
                             <span class="text-slate-300 font-bold">$</span>
-                            <input type="number" id="${id}" value="${val}" 
-                                onchange="saveData()"
-                                placeholder="0.00" 
+                            <input type="number" id="${id}" value="${val}" onchange="saveData()" placeholder="0.00" 
                                 class="w-32 bg-transparent text-right font-black text-xl text-slate-800 focus:outline-none">
                         </div>
-                    </div>
-                `;
+                    </div>`;
             }).join('');
-            
             document.getElementById('bank-balance').value = weeklyData.bankBalance || "";
-            updateTotals();
         }
 
         function renderExpenses() {
             const list = document.getElementById('expenses-list');
             if (!weeklyData.expenses || weeklyData.expenses.length === 0) {
-                list.innerHTML = `<p class="text-center text-slate-300 py-12 text-sm italic">No expenses logged for this week.</p>`;
+                list.innerHTML = `<p class="text-center text-slate-300 py-12 text-sm italic">No expenses logged.</p>`;
                 return;
             }
-
             list.innerHTML = weeklyData.expenses.map((exp, idx) => `
                 <div class="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-2xl shadow-sm group">
-                    <div class="flex items-center gap-3">
-                        <div class="w-8 h-8 rounded-lg bg-rose-50 flex items-center justify-center text-rose-500">
-                            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M4 4a2 2 0 00-2 2v1h16V6a2 2 0 00-2-2H4z"></path><path fill-rule="evenodd" d="M18 9H2v5a2 2 0 002 2h12a2 2 0 002-2V9zM4 13a1 1 0 011-1h1a1 1 0 110 2H5a1 1 0 01-1-1zm5-1a1 1 0 100 2h1a1 1 0 100-2H9z" clip-rule="evenodd"></path></svg>
-                        </div>
-                        <span class="font-bold text-sm text-slate-700">${exp.name}</span>
-                    </div>
+                    <span class="font-bold text-sm text-slate-700">${exp.name}</span>
                     <div class="flex items-center gap-4">
-                        <span class="font-black text-slate-900">$${exp.amount.toLocaleString(undefined, {minimumFractionDigits:2})}</span>
-                        <button onclick="removeExpense(${idx})" class="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 transition-all">
+                        <span class="font-black text-slate-900">$${parseFloat(exp.amount).toFixed(2)}</span>
+                        <button onclick="removeExpense(${idx})" class="text-slate-300 hover:text-rose-500 transition-all">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
                         </button>
                     </div>
-                </div>
-            `).join('');
+                </div>`).join('');
         }
 
         window.addExpense = () => {
             const name = document.getElementById('exp-name').value;
             const amount = parseFloat(document.getElementById('exp-amount').value);
             if (!name || isNaN(amount)) return;
-
-            if (!weeklyData.expenses) weeklyData.expenses = [];
             weeklyData.expenses.push({ name, amount });
             document.getElementById('exp-name').value = '';
             document.getElementById('exp-amount').value = '';
@@ -396,58 +365,39 @@
         };
 
         function updateTotals() {
-            let totalIn = 0;
-            if (weeklyData.income) {
-                Object.keys(weeklyData.income).forEach(day => {
-                    Object.values(weeklyData.income[day]).forEach(val => totalIn += val);
-                });
-            }
-
-            const totalOut = (weeklyData.expenses || []).reduce((sum, exp) => sum + exp.amount, 0);
+            let totalIn = Object.values(weeklyData.revenue || {}).reduce((a, b) => a + (parseFloat(b) || 0), 0);
+            let totalOut = (weeklyData.expenses || []).reduce((a, b) => a + (parseFloat(b.amount) || 0), 0);
             const net = totalIn - totalOut;
 
-            const badge = document.getElementById('total-out-badge');
-            if (badge) badge.innerText = `$${totalOut.toLocaleString(undefined, {minimumFractionDigits:2})} OUT`;
-            
+            document.getElementById('total-out-badge').innerText = `$${totalOut.toLocaleString(undefined, {minimumFractionDigits:2})} OUT`;
             const netEl = document.getElementById('net-cash-flow');
-            if (netEl) {
-                netEl.innerText = `$${net.toLocaleString(undefined, {minimumFractionDigits:2})}`;
-                netEl.className = net < 0 
-                    ? "text-4xl font-black text-rose-400 tracking-tighter" 
-                    : "text-4xl font-black text-emerald-400 tracking-tighter";
-            }
+            netEl.innerText = `$${net.toLocaleString(undefined, {minimumFractionDigits:2})}`;
+            netEl.className = net < 0 ? "text-4xl font-black text-rose-400" : "text-4xl font-black text-emerald-400";
 
             const finalizeBtn = document.getElementById('finalize-btn');
-            if (finalizeBtn) {
-                if (weeklyData.isFinalized) {
-                    finalizeBtn.innerText = "Week Finalized";
-                    finalizeBtn.className = "bg-emerald-500 text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest pointer-events-none";
-                } else {
-                    finalizeBtn.innerText = "Finalize Week";
-                    finalizeBtn.className = "bg-white text-slate-900 px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-100 transition-colors";
-                }
+            if (weeklyData.status === 'submitted') {
+                finalizeBtn.innerText = "Week Finalized";
+                finalizeBtn.className = "bg-emerald-500 text-white px-8 py-4 rounded-2xl font-black text-xs uppercase pointer-events-none";
+            } else {
+                finalizeBtn.innerText = "Finalize Week";
+                finalizeBtn.className = "bg-white text-slate-900 px-8 py-4 rounded-2xl font-black text-xs uppercase hover:bg-slate-100 transition-colors";
             }
         }
 
         window.finalizeWeek = () => {
-            if (confirm("Lock this week? You won't be able to edit unless you contact admin.")) {
-                weeklyData.isFinalized = true;
+            if (confirm("Lock this week's records?")) {
+                weeklyData.status = 'submitted';
                 saveData();
             }
         };
 
         function showToast(msg) {
             const t = document.getElementById('toast');
-            if (t) {
-                t.innerText = msg;
-                t.style.opacity = '1';
-                setTimeout(() => t.style.opacity = '0', 2000);
-            }
+            t.innerText = msg; t.style.opacity = '1';
+            setTimeout(() => t.style.opacity = '0', 2000);
         }
 
-        // Initialize App
         init();
-
     </script>
 </body>
 </html>

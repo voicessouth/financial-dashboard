@@ -1,396 +1,307 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
 import { 
-  getAuth, 
-  signInAnonymously, 
-  signInWithCustomToken, 
-  onAuthStateChanged,
-  signOut 
-} from 'firebase/auth';
-import { 
   getFirestore, 
   doc, 
   setDoc, 
-  getDoc, 
-  collection, 
-  onSnapshot, 
-  addDoc, 
-  deleteDoc
+  onSnapshot 
 } from 'firebase/firestore';
 import { 
-  LayoutDashboard, 
+  getAuth, 
+  signInAnonymously, 
+  onAuthStateChanged 
+} from 'firebase/auth';
+import { 
+  TrendingUp, 
+  Wallet, 
   Plus, 
-  Trash2, 
-  ChevronLeft, 
-  ChevronRight, 
-  LogOut, 
-  Database, 
-  Search,
-  RefreshCw
+  Lock, 
+  AlertCircle,
+  Calendar,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
-const firebaseConfig = {
+
 // --- FIREBASE CONFIGURATION ---
+// Replace placeholders with your ACTUAL keys from the Firebase Console
+const firebaseConfig = {
   apiKey: "AIzaSyDb6oFZEStklFT_Dt2riDbQC_IJPHcT304",
   authDomain: "church-finance-dashboard-40dca.firebaseapp.com",
   projectId: "church-finance-dashboard-40dca",
   storageBucket: "church-finance-dashboard-40dca.firebasestorage.app",
   messagingSenderId: "480863076081",
-  appId: "1:480863076081:web:dd01f7270a7cd158f93350";
+  appId: "1:480863076081:web:dd01f7270a7cd158f93350"
 };
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+const REVENUE_CATEGORIES = [
+  'Cash/Checks', 'Credit Card', 'Text', 'Givelify', 
+  'Tithely', 'CashApp', 'Zelle', 'Website Giving'
+];
+
+const EXPENSE_CATEGORIES = [
+  'Mortgage - Kirkland Group', 'Pastor Payroll', 'Lady Val Payroll', 
+  'Admin Payroll Taxes and fees', 'Band Payroll', 'Pastor Love offerings', 
+  'Georgia Power', 'Georgia Natural Gas', 'Spectrum (TV, Phone, Internet)', 
+  'Henry County Water Authority', 'TMobile', 'Kaiser Permanente', 
+  'GFL Environmental', 'Ministry Design', 'Quickbooks', 
+  'Team Pest USA', 'First Citizens Bank', 'Other'
+];
+
 export default function App() {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [activeDate, setActiveDate] = useState(new Date());
-  const [recoveryStatus, setRecoveryStatus] = useState('idle'); // idle, scanning, found, empty
-  
-  // Financial State
-  const [income, setIncome] = useState({
-    cash: 0,
-    credit: 0,
-    text: 0,
-    givelify: 0,
-    tithely: 0,
-    cashapp: 0,
-    zelle: 0,
-    website: 0
-  });
+  const [selectedSheetDate, setSelectedSheetDate] = useState(null);
+  const [revenueData, setRevenueData] = useState({});
   const [expenses, setExpenses] = useState([]);
-  const [newExpense, setNewExpense] = useState({ category: 'Lady Val Payroll', amount: '' });
+  const [isSubmitted, setIsSubmitted] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  const categories = [
-    'Lady Val Payroll', 'MORTGAGE - KIRKLAND GROUP', 'UTILITIES', 
-    'MAINTENANCE', 'SUPPLIES', 'MINISTRY', 'TRAVEL', 'OTHER'
-  ];
+  // Check if keys are still placeholders
+  const isConfigured = firebaseConfig.apiKey !== "YOUR_API_KEY";
 
-  // --- AUTHENTICATION ---
+  // Helper: Get Tuesday of a given week
+  const getWorksheetDate = (dateObj) => {
+    const d = new Date(dateObj);
+    const day = d.getDay();
+    const diff = day >= 2 ? day - 2 : day + 5; 
+    const lastTuesday = new Date(d);
+    lastTuesday.setDate(d.getDate() - diff);
+    return `${lastTuesday.getMonth() + 1}-${lastTuesday.getDate()}-${lastTuesday.getFullYear().toString().slice(-2)}`;
+  };
+
   useEffect(() => {
     const initAuth = async () => {
+      if (!isConfigured) {
+        setLoading(false);
+        return;
+      }
       try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
+        await signInAnonymously(auth);
       } catch (err) {
-        console.error("Auth error:", err);
+        console.error("Auth Error:", err);
+        setLoading(false);
       }
     };
     initAuth();
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
-      setLoading(false);
+      if (u) setLoading(false);
     });
     return () => unsubscribe();
-  }, []);
-
-  // --- DATE KEY GENERATION ---
-  const dateKey = useMemo(() => {
-    const d = new Date(activeDate);
-    // Explicitly stringify to avoid any object rendering issues
-    return String(`${d.getMonth() + 1}-${d.getDate()}-${d.getFullYear()}`);
-  }, [activeDate]);
-
-  // --- DATA SYNC & RECOVERY ENGINE ---
-  // RULE 1: Paths must be artifacts/{appId}/public/data/{collection}/{doc} (6 segments)
-  const getDocPath = (key) => `artifacts/${appId}/public/data/finance/entries/${key}`;
-  const getExpColPath = (key) => `artifacts/${appId}/public/data/finance/entries/${key}/expenses`;
-
-  const runDeepScan = async () => {
-    if (!user) return;
-    setRecoveryStatus('scanning');
-    
-    // Testing multiple potential key formats if they were saved differently before
-    const possibleKeys = [
-      dateKey,
-      `entry_${dateKey}`,
-      dateKey.replaceAll('-', '_')
-    ];
-
-    let foundAny = false;
-    for (const key of possibleKeys) {
-      try {
-        const docRef = doc(db, getDocPath(key));
-        const snap = await getDoc(docRef);
-        if (snap.exists()) {
-          foundAny = true;
-          const data = snap.data();
-          if (data.income) setIncome(data.income);
-          // If we found it under a weird key, we don't break, just keep checking
-        }
-      } catch (e) {
-        console.error("Scan error at " + key, e);
-      }
-    }
-
-    setRecoveryStatus(foundAny ? 'found' : 'empty');
-    setTimeout(() => setRecoveryStatus('idle'), 5000);
-  };
+  }, [isConfigured]);
 
   useEffect(() => {
-    if (!user) return;
+    setSelectedSheetDate(getWorksheetDate(new Date()));
+  }, []);
 
-    const docPath = getDocPath(dateKey);
-    const unsubDoc = onSnapshot(doc(db, docPath), (docSnap) => {
+  useEffect(() => {
+    if (!user || !selectedSheetDate || !isConfigured) return;
+    
+    // Path: /church_reports/{date}
+    const docPath = doc(db, 'church_reports', selectedSheetDate);
+    
+    const unsubscribe = onSnapshot(docPath, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        setIncome(data.income || {
-          cash: 0, credit: 0, text: 0, givelify: 0, 
-          tithely: 0, cashapp: 0, zelle: 0, website: 0
-        });
+        setRevenueData(data.revenue || {});
+        setExpenses(data.expenses || []);
+        setIsSubmitted(data.status === 'submitted');
       } else {
-        setIncome({
-          cash: 0, credit: 0, text: 0, givelify: 0, 
-          tithely: 0, cashapp: 0, zelle: 0, website: 0
-        });
+        setRevenueData({});
+        setExpenses([]);
+        setIsSubmitted(false);
       }
-    }, (err) => console.error("Firestore Income Error:", err));
-
-    const unsubExp = onSnapshot(collection(db, getExpColPath(dateKey)), (snap) => {
-      const exps = [];
-      snap.forEach(d => exps.push({ id: d.id, ...d.data() }));
-      setExpenses(exps);
-    }, (err) => console.error("Firestore Expense Error:", err));
-
-    return () => {
-      unsubDoc();
-      unsubExp();
-    };
-  }, [user, dateKey]);
-
-  // --- ACTIONS ---
-  const handleIncomeChange = async (key, val) => {
-    if (!user) return;
-    const numericVal = parseFloat(val) || 0;
-    const newIncome = { ...income, [key]: numericVal };
-    setIncome(newIncome);
-    
-    const docRef = doc(db, getDocPath(dateKey));
-    await setDoc(docRef, {
-      income: newIncome,
-      lastUpdated: new Date().toISOString()
-    }, { merge: true });
-  };
-
-  const addExpense = async () => {
-    if (!user || !newExpense.amount) return;
-    await addDoc(collection(db, getExpColPath(dateKey)), {
-      category: newExpense.category,
-      amount: parseFloat(newExpense.amount),
-      timestamp: new Date().toISOString()
+    }, (error) => {
+      console.error("Firestore Listen Error:", error);
     });
-    setNewExpense({ ...newExpense, amount: '' });
+    
+    return () => unsubscribe();
+  }, [user, selectedSheetDate, isConfigured]);
+
+  const totals = useMemo(() => {
+    const rev = Object.values(revenueData).reduce((acc, val) => acc + (parseFloat(val) || 0), 0);
+    const exp = expenses.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0);
+    return { rev, exp, net: rev - exp };
+  }, [revenueData, expenses]);
+
+  const updateCloudData = async (data) => {
+    if (!isConfigured || !user || !selectedSheetDate || isSubmitted) return;
+    const docPath = doc(db, 'church_reports', selectedSheetDate);
+    await setDoc(docPath, { ...data, lastUpdated: new Date().toISOString() }, { merge: true });
   };
 
-  const deleteExpense = async (id) => {
-    await deleteDoc(doc(db, getExpColPath(dateKey), id));
+  const handleRevenueChange = (cat, val) => {
+    const updated = { ...revenueData, [cat]: val };
+    setRevenueData(updated);
+    updateCloudData({ revenue: updated });
   };
 
-  // Helper to ensure values are numbers before summing
-  const totalIncome = useMemo(() => 
-    Object.values(income).reduce((a, b) => a + (Number(b) || 0), 0)
-  , [income]);
+  const addExpense = (e) => {
+    e.preventDefault();
+    if (isSubmitted) return;
+    const formData = new FormData(e.target);
+    const newExpense = {
+      id: Date.now().toString(),
+      category: formData.get('category'),
+      amount: parseFloat(formData.get('amount')) || 0,
+      timestamp: new Date().toLocaleTimeString()
+    };
+    const updated = [newExpense, ...expenses];
+    setExpenses(updated);
+    updateCloudData({ expenses: updated });
+    e.target.reset();
+  };
 
-  const totalExpenses = useMemo(() => 
-    expenses.reduce((a, b) => a + (Number(b.amount) || 0), 0)
-  , [expenses]);
+  const changeWeek = (direction) => {
+    const [m, d, y] = selectedSheetDate.split('-').map(Number);
+    const date = new Date(2000 + y, m - 1, d);
+    date.setDate(date.getDate() + (direction * 7));
+    setSelectedSheetDate(getWorksheetDate(date));
+  };
 
-  const netSum = totalIncome - totalExpenses;
-
-  if (loading) return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
-    </div>
-  );
+  if (loading && isConfigured) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="text-center animate-pulse">
+          <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Connecting to Treasury...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-slate-900 font-sans pb-20">
-      {/* Recovery Status Bar */}
-      <div className={`w-full py-2 px-4 flex items-center justify-between transition-colors ${
-        recoveryStatus === 'scanning' ? 'bg-amber-100 text-amber-800' :
-        recoveryStatus === 'found' ? 'bg-emerald-100 text-emerald-800' :
-        recoveryStatus === 'empty' ? 'bg-slate-200 text-slate-600' : 'bg-indigo-600 text-white'
-      }`}>
-        <div className="flex items-center gap-2 text-sm font-medium">
-          {recoveryStatus === 'scanning' ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Database className="w-4 h-4" />}
-          <span>
-            {recoveryStatus === 'scanning' ? 'Deep Scanning database...' :
-             recoveryStatus === 'found' ? 'Records Restored!' :
-             recoveryStatus === 'empty' ? 'No legacy data found.' : 
-             'Voices South Financial Network'}
-          </span>
+    <div className="min-h-screen bg-slate-50 p-4 md:p-8 font-sans pb-32">
+      {!isConfigured && (
+        <div className="max-w-4xl mx-auto mb-6 bg-amber-50 border border-amber-200 p-4 rounded-xl text-amber-800 flex items-center gap-3">
+          <AlertCircle size={20} />
+          <p className="text-sm font-medium">Configuration Required: Add your Firebase API keys to <code>App.jsx</code>.</p>
         </div>
-        <button 
-          onClick={runDeepScan}
-          className="bg-white/20 hover:bg-white/30 px-3 py-1 rounded text-xs flex items-center gap-1 transition-all"
-        >
-          <Search className="w-3 h-3" /> Search Legacy
-        </button>
-      </div>
+      )}
 
-      <header className="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center sticky top-0 z-10 shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="bg-indigo-600 p-2 rounded-lg">
-            <LayoutDashboard className="text-white w-6 h-6" />
-          </div>
-          <h1 className="text-xl font-bold tracking-tight text-slate-800 uppercase">Voices South Portal</h1>
-        </div>
+      {/* Header / Week Picker */}
+      <header className="max-w-4xl mx-auto mb-8 bg-white p-6 rounded-3xl shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-center gap-4">
         <div className="flex items-center gap-4">
-          <button onClick={() => signOut(auth)} className="text-slate-400 hover:text-red-500 transition-colors">
-            <LogOut className="w-5 h-5" />
-          </button>
+          <button onClick={() => changeWeek(-1)} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><ChevronLeft/></button>
+          <div className="text-center md:text-left">
+            <h1 className="text-2xl font-black text-slate-800 leading-tight">Financial Dashboard</h1>
+            <p className="text-indigo-600 text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 justify-center md:justify-start">
+              <Calendar size={12}/> Week of {selectedSheetDate}
+            </p>
+          </div>
+          <button onClick={() => changeWeek(1)} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><ChevronRight/></button>
+        </div>
+        <div className="text-right bg-slate-50 px-6 py-3 rounded-2xl border border-slate-100">
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Net Cash Flow</p>
+          <p className={`text-2xl font-black ${totals.net >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+            ${totals.net.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+          </p>
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto mt-8 px-4 md:px-6 space-y-8">
-        
-        <section className="bg-white rounded-3xl p-8 shadow-sm border border-slate-200/60 relative overflow-hidden text-center">
-          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-emerald-500"></div>
-          <div className="flex items-center justify-center gap-8">
-            <button 
-              onClick={() => {
-                const d = new Date(activeDate);
-                d.setDate(d.getDate() - 7);
-                setActiveDate(d);
-              }}
-              className="p-3 rounded-full hover:bg-slate-100 border border-slate-100 transition-all"
-            >
-              <ChevronLeft className="w-6 h-6 text-slate-400" />
-            </button>
-            
-            <div>
-              <p className="text-[3.5rem] font-black text-slate-800 leading-none tracking-tighter">
-                {String(dateKey)}
-              </p>
-              <p className="text-slate-400 font-bold uppercase tracking-[0.2em] text-[10px] mt-2">Week Ending Date</p>
+      <main className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Revenue Section */}
+        <section className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
+          <h2 className="font-black text-xs uppercase tracking-widest text-slate-400 mb-6 flex items-center gap-2">
+            <TrendingUp className="text-emerald-500" size={16}/> Weekly Revenue
+          </h2>
+          <div className="space-y-4">
+            {REVENUE_CATEGORIES.map(cat => (
+              <div key={cat} className="flex flex-col">
+                <label className="text-[10px] font-black text-slate-400 uppercase mb-1 px-1">{cat}</label>
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 font-bold text-sm">$</span>
+                  <input 
+                    type="number" 
+                    disabled={isSubmitted}
+                    className="w-full pl-8 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-2 ring-indigo-500/10 focus:bg-white transition-all font-bold text-slate-700" 
+                    value={revenueData[cat] || ''} 
+                    onChange={(e) => handleRevenueChange(cat, e.target.value)}
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+            ))}
+            <div className="pt-4 mt-6 border-t border-dashed border-slate-200 flex justify-between items-center">
+              <span className="text-xs font-black uppercase text-slate-400">Total Income</span>
+              <span className="text-xl font-black text-emerald-600">${totals.rev.toLocaleString()}</span>
             </div>
-
-            <button 
-              onClick={() => {
-                const d = new Date(activeDate);
-                d.setDate(d.getDate() + 7);
-                setActiveDate(d);
-              }}
-              className="p-3 rounded-full hover:bg-slate-100 border border-slate-100 transition-all"
-            >
-              <ChevronRight className="w-6 h-6 text-slate-400" />
-            </button>
           </div>
         </section>
 
-        <div className="grid md:grid-cols-2 gap-8">
-          <section className="bg-white rounded-3xl p-8 shadow-sm border border-slate-200/60 h-fit">
-            <h2 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-8 flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-              Weekly Income
-            </h2>
+        {/* Expenses Section */}
+        <section className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 flex flex-col">
+          <h2 className="font-black text-xs uppercase tracking-widest text-slate-400 mb-6 flex items-center gap-2">
+            <Wallet className="text-rose-500" size={16}/> Weekly Expenses
+          </h2>
+          
+          {!isSubmitted && (
+            <form onSubmit={addExpense} className="space-y-3 mb-6 bg-slate-50 p-4 rounded-2xl border border-slate-100">
+              <select name="category" required className="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none">
+                <option value="">Select Category...</option>
+                {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 font-bold text-xs">$</span>
+                  <input name="amount" type="number" step="0.01" required placeholder="0.00" className="w-full pl-7 pr-3 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none" />
+                </div>
+                <button type="submit" className="bg-slate-900 text-white px-5 rounded-xl hover:bg-black transition-colors">
+                  <Plus size={20}/>
+                </button>
+              </div>
+            </form>
+          )}
 
-            <div className="space-y-6">
-              {Object.keys(income).map((key) => (
-                <div key={key} className="flex items-center justify-between group">
+          <div className="flex-1 overflow-y-auto max-h-[500px] space-y-2 pr-2 custom-scrollbar">
+            {expenses.length === 0 ? (
+              <div className="py-20 text-center">
+                <p className="text-slate-300 text-[10px] font-black uppercase tracking-tighter">No expenses recorded</p>
+              </div>
+            ) : (
+              expenses.map(exp => (
+                <div key={exp.id} className="flex justify-between items-center p-4 bg-slate-50 border border-slate-100 rounded-2xl group transition-all">
                   <div>
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 group-hover:text-indigo-600 transition-colors">
-                      {key.replace(/([A-Z])/g, ' $1')}
-                    </p>
+                    <p className="font-bold text-slate-700 text-sm">{exp.category}</p>
+                    <p className="text-[9px] text-slate-400 font-medium uppercase">{exp.timestamp}</p>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-slate-300 font-bold">$</span>
-                    <input
-                      type="number"
-                      value={income[key] || ''}
-                      onChange={(e) => handleIncomeChange(key, e.target.value)}
-                      placeholder="0.00"
-                      className="w-32 text-right font-black text-xl text-slate-800 focus:outline-none placeholder-slate-200"
-                    />
-                  </div>
+                  <span className="font-black text-rose-600">-${exp.amount.toFixed(2)}</span>
                 </div>
-              ))}
-            </div>
-          </section>
-
-          <div className="space-y-8">
-            <section className="bg-white rounded-3xl p-8 shadow-sm border border-slate-200/60">
-              <h2 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-8 flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-rose-500"></div>
-                New Expenditure
-              </h2>
-
-              <div className="space-y-4">
-                <select
-                  value={newExpense.category}
-                  onChange={(e) => setNewExpense({ ...newExpense, category: e.target.value })}
-                  className="w-full bg-slate-50 border-none rounded-2xl px-6 py-4 text-sm font-bold text-slate-700 outline-none"
-                >
-                  {categories.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-                <div className="relative">
-                  <input
-                    type="number"
-                    value={newExpense.amount}
-                    onChange={(e) => setNewExpense({ ...newExpense, amount: e.target.value })}
-                    placeholder="0.00"
-                    className="w-full bg-slate-50 border-none rounded-2xl px-6 py-6 text-2xl font-black text-slate-800 outline-none placeholder-slate-200"
-                  />
-                  <button
-                    onClick={addExpense}
-                    className="absolute right-3 top-3 bottom-3 aspect-square bg-slate-900 text-white rounded-xl flex items-center justify-center hover:bg-slate-800 active:scale-95 transition-all shadow-lg"
-                  >
-                    <Plus className="w-6 h-6" />
-                  </button>
-                </div>
-              </div>
-            </section>
-
-            <section className="bg-white rounded-3xl p-8 shadow-sm border border-slate-200/60">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Activity Log</h2>
-                <p className="text-rose-500 font-black text-sm">${totalExpenses.toFixed(2)}</p>
-              </div>
-
-              <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-                {expenses.length === 0 ? (
-                  <p className="text-center text-slate-300 text-[10px] font-bold uppercase py-8">No records found</p>
-                ) : (
-                  expenses.map(exp => (
-                    <div key={exp.id} className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl group transition-all">
-                      <div>
-                        <p className="text-[10px] font-black uppercase tracking-tighter text-slate-800">{exp.category}</p>
-                        <p className="text-[8px] text-slate-400 font-bold">{new Date(exp.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <p className="font-black text-slate-700">${(Number(exp.amount) || 0).toFixed(2)}</p>
-                        <button onClick={() => deleteExpense(exp.id)} className="text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </section>
+              ))
+            )}
           </div>
-        </div>
-
-        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 w-[90%] max-w-xl z-20">
-          <div className="bg-slate-900 rounded-[2.5rem] p-6 shadow-2xl flex items-center justify-between border border-white/10">
-            <div>
-              <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Weekly Net Sum</p>
-              <p className={`text-4xl font-black ${netSum >= 0 ? 'text-emerald-400' : 'text-rose-400'} tracking-tighter`}>
-                ${netSum.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-              </p>
-            </div>
-            <div className="text-right">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-tight">Total In: ${totalIncome.toLocaleString()}</p>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-tight">Total Out: ${totalExpenses.toLocaleString()}</p>
-            </div>
+          
+          <div className="pt-4 mt-auto border-t border-dashed border-slate-200 flex justify-between items-center">
+            <span className="text-xs font-black uppercase text-slate-400">Total Expenses</span>
+            <span className="text-xl font-black text-rose-600">-${totals.exp.toLocaleString()}</span>
           </div>
-        </div>
+        </section>
       </main>
 
-      <style>{`
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 10px; }
-      `}</style>
+      {/* Fixed Footer Actions */}
+      <footer className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[92%] max-w-lg bg-white/80 backdrop-blur-xl border border-white/50 shadow-2xl rounded-full p-3 flex justify-between items-center z-50">
+        <div className="px-6">
+          <p className="text-slate-400 text-[9px] uppercase font-black tracking-widest leading-none mb-1">Status</p>
+          <p className={`text-xs font-bold uppercase ${isSubmitted ? 'text-rose-500' : 'text-indigo-600'}`}>
+            {isSubmitted ? 'Record Locked' : 'Syncing Live'}
+          </p>
+        </div>
+        {!isSubmitted ? (
+          <button 
+            onClick={() => { if(window.confirm("Finalize this week's records? This will lock editing.")) updateCloudData({ status: 'submitted' })}}
+            className="bg-indigo-600 text-white px-10 py-4 rounded-full font-black text-xs uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 active:scale-95"
+          >
+            Finalize Week
+          </button>
+        ) : (
+          <div className="flex items-center gap-2 text-rose-500 font-black text-xs uppercase tracking-widest bg-rose-50 px-8 py-4 rounded-full border border-rose-100">
+            <Lock size={14} /> Finalized
+          </div>
+        )}
+      </footer>
     </div>
   );
 }

@@ -15,11 +15,9 @@
         .input-inset:focus { background: white; border-color: #3b82f6; outline: none; box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1); }
         .gradient-border { height: 4px; background: linear-gradient(90deg, #3b82f6, #10b981); border-radius: 2px; margin-bottom: 1rem; }
         
-        /* Custom Scrollbar */
         ::-webkit-scrollbar { width: 8px; }
         ::-webkit-scrollbar-track { background: #f1f5f9; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .animate-in { animation: fadeIn 0.4s ease-out forwards; }
@@ -70,7 +68,6 @@
                 <h2 class="text-sm font-bold uppercase tracking-widest text-slate-400">Weekly Income Entry</h2>
             </div>
 
-            <!-- Day Selector -->
             <div class="flex gap-2 mb-8 overflow-x-auto pb-2">
                 <button onclick="setDay('SUN')" id="btn-sun" class="btn-toggle flex-1 py-3 px-4 rounded-xl text-xs font-bold uppercase tracking-tighter bg-white border border-slate-200">Sun</button>
                 <button onclick="setDay('TUE')" id="btn-tue" class="btn-toggle flex-1 py-3 px-4 rounded-xl text-xs font-bold uppercase tracking-tighter bg-white border border-slate-200">Tue</button>
@@ -78,29 +75,25 @@
                 <button onclick="setDay('EOM')" id="btn-eom" class="btn-toggle flex-1 py-3 px-4 rounded-xl text-xs font-bold uppercase tracking-tighter bg-white border border-slate-200">EOM</button>
             </div>
 
-            <div id="income-inputs" class="space-y-6">
-                <!-- Inputs will be generated here -->
-            </div>
+            <div id="income-inputs" class="space-y-6"></div>
 
             <div class="mt-8 pt-8 border-t border-slate-100">
                 <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Bank Balance (Statement Closing)</label>
                 <div class="relative">
                     <span class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 font-bold">$</span>
-                    <input type="number" id="bank-balance" oninput="updateIncome('bankBalance', this.value)" placeholder="0.00" class="w-full input-inset p-4 pl-8 rounded-2xl font-bold text-slate-900 text-lg">
+                    <input type="number" id="bank-balance" oninput="updateBankBalance(this.value)" placeholder="0.00" class="w-full input-inset p-4 pl-8 rounded-2xl font-bold text-slate-900 text-lg">
                 </div>
             </div>
         </section>
 
         <div class="space-y-8">
-            <!-- Expense Entry -->
             <section class="glass-card p-8 animate-in" style="animation-delay: 0.1s">
                 <div class="flex items-center gap-2 mb-6">
                     <div class="w-2 h-2 rounded-full bg-rose-500"></div>
                     <h2 class="text-sm font-bold uppercase tracking-widest text-slate-400">Log Expense</h2>
                 </div>
-                
                 <div class="space-y-4">
-                    <input type="text" id="exp-desc" placeholder="Expense Description (e.g. Utilities)" class="w-full input-inset p-4 rounded-2xl font-semibold text-slate-700">
+                    <input type="text" id="exp-desc" placeholder="Expense Description" class="w-full input-inset p-4 rounded-2xl font-semibold text-slate-700">
                     <div class="flex gap-4">
                         <div class="relative flex-1">
                             <span class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 font-bold">$</span>
@@ -113,7 +106,6 @@
                 </div>
             </section>
 
-            <!-- Expense Log -->
             <section class="glass-card p-8 animate-in" style="animation-delay: 0.2s">
                 <div class="flex justify-between items-center mb-6">
                     <div class="flex items-center gap-2">
@@ -122,67 +114,49 @@
                     </div>
                     <span id="total-out" class="bg-rose-50 text-rose-600 px-3 py-1 rounded-full text-[10px] font-black uppercase">$0.00 OUT</span>
                 </div>
-                
-                <div id="expense-list" class="space-y-3 max-h-[300px] overflow-y-auto pr-2">
-                    <!-- List items here -->
-                    <div class="text-center py-8 text-slate-300 italic text-sm">No expenses logged for this week</div>
-                </div>
+                <div id="expense-list" class="space-y-3 max-h-[300px] overflow-y-auto pr-2"></div>
             </section>
         </div>
     </div>
 
-    <!-- Sticky Net Sum Bar -->
     <div class="fixed bottom-8 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-4xl z-40">
         <div class="bg-slate-900 text-white p-6 md:p-8 rounded-[32px] shadow-2xl flex flex-col md:flex-row items-center justify-between gap-6 border border-white/10">
             <div>
                 <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Weekly Cash Flow (Net Sum)</div>
                 <div id="net-sum" class="text-4xl md:text-5xl font-black text-emerald-400 tracking-tighter">$0.00</div>
             </div>
-            <button onclick="finalizeWeek()" class="w-full md:w-auto px-10 py-4 bg-white text-slate-900 font-black rounded-2xl uppercase tracking-widest hover:bg-slate-100 transition-all active:scale-95 shadow-xl">
+            <button id="finalize-btn" onclick="finalizeWeek()" class="w-full md:w-auto px-10 py-4 bg-white text-slate-900 font-black rounded-2xl uppercase tracking-widest hover:bg-slate-100 transition-all active:scale-95 shadow-xl">
                 Finalize Week
             </button>
         </div>
     </div>
 
-    <!-- Custom Modal -->
     <div id="custom-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] hidden items-center justify-center p-4">
         <div class="glass-card max-w-md w-full p-8 shadow-2xl">
             <h3 id="modal-title" class="text-xl font-bold mb-2">Message</h3>
             <p id="modal-body" class="text-slate-500 mb-8 leading-relaxed"></p>
-            <div class="flex gap-3 justify-end" id="modal-footer">
-                <!-- Action buttons -->
-            </div>
+            <div class="flex gap-3 justify-end" id="modal-footer"></div>
         </div>
     </div>
-
-    <div class="h-40"></div> <!-- Spacer for sticky bar -->
+    <div class="h-40"></div>
 </div>
 
-<!-- Firebase SDKs -->
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
     import { getAuth, onAuthStateChanged, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-    import { getFirestore, doc, setDoc, getDoc, collection, onSnapshot, addDoc, deleteDoc, query, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    import { getFirestore, doc, setDoc, getDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-    // --- SETUP & CONFIG ---
     const firebaseConfig = JSON.parse(__firebase_config);
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
     const appId = typeof __app_id !== 'undefined' ? __app_id : 'voices-south-financials';
 
-    // State
     let user = null;
     let currentWeekDate = getNearestFriday(new Date());
     let currentDay = 'SUN';
-    let weeklyData = {
-        income: {
-            'SUN': {}, 'TUE': {}, 'EOW': {}, 'EOM': {}
-        },
-        expenses: [],
-        bankBalance: 0,
-        finalized: false
-    };
+    let weeklyData = getDefaultState();
+    let unsubscribe = null;
 
     const categories = [
         { id: 'cash', label: 'Cash/Checks' },
@@ -195,9 +169,16 @@
         { id: 'website', label: 'Website Giving' }
     ];
 
-    // --- INITIALIZATION ---
-    async function init() {
-        showLoading(true);
+    function getDefaultState() {
+        return {
+            income: { 'SUN': {}, 'TUE': {}, 'EOW': {}, 'EOM': {} },
+            expenses: [],
+            bankBalance: 0,
+            finalized: false
+        };
+    }
+
+    async function initAuth() {
         try {
             if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                 await signInWithCustomToken(auth, __initial_auth_token);
@@ -205,49 +186,34 @@
                 await signInAnonymously(auth);
             }
         } catch (error) {
-            console.error("Auth Error:", error);
-            showModal("Connection Error", "We couldn't connect to the secure server. Please refresh.", [{label: 'Retry', action: () => location.reload()}]);
+            console.error("Auth Failure:", error);
         }
     }
 
     onAuthStateChanged(auth, (u) => {
         user = u;
-        if (user) {
-            setupDataListener();
-        }
+        if (user) setupDataListener();
     });
 
-    // --- DATA FETCHING & SYNC ---
-    let unsubscribe = null;
     function setupDataListener() {
         if (!user) return;
         if (unsubscribe) unsubscribe();
 
         const dateStr = formatDate(currentWeekDate);
-        updateDisplayDate();
-
-        // Document Path: /artifacts/{appId}/public/data/weeks/{dateStr}
+        document.getElementById('display-date').innerText = dateStr;
         const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'weeks', dateStr);
 
-        unsubscribe = onSnapshot(docRef, (docSnap) => {
-            if (docSnap.exists()) {
-                weeklyData = { ...weeklyData, ...docSnap.data() };
+        unsubscribe = onSnapshot(docRef, (snap) => {
+            if (snap.exists()) {
+                weeklyData = { ...getDefaultState(), ...snap.data() };
             } else {
-                // Reset state for new date
-                weeklyData = {
-                    income: { 'SUN': {}, 'TUE': {}, 'EOW': {}, 'EOM': {} },
-                    expenses: [],
-                    bankBalance: 0,
-                    finalized: false,
-                    weekEndingDate: dateStr
-                };
+                weeklyData = getDefaultState();
             }
             renderAll();
-            showLoading(false);
-        }, (error) => {
-            console.error("Firestore Listen Error:", error);
-            showLoading(false);
-            // Don't crash UI, just log it. Usually permission or network.
+            document.getElementById('loading-overlay').style.display = 'none';
+        }, (err) => {
+            console.error("Snapshot error:", err);
+            document.getElementById('loading-overlay').style.display = 'none';
         });
     }
 
@@ -255,240 +221,115 @@
         if (!user || weeklyData.finalized) return;
         const dateStr = formatDate(currentWeekDate);
         const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'weeks', dateStr);
-        
-        try {
-            await setDoc(docRef, {
-                ...weeklyData,
-                updatedAt: new Date().toISOString(),
-                updatedBy: user.uid
-            }, { merge: true });
-        } catch (e) {
-            console.error("Save Error:", e);
-        }
+        await setDoc(docRef, { ...weeklyData, updatedAt: new Date().toISOString() }, { merge: true });
     }
 
-    // --- UI LOGIC ---
     function renderAll() {
-        renderDayButtons();
-        renderIncomeInputs();
-        renderExpenses();
-        updateNetSum();
+        const isFinalized = weeklyData.finalized;
         
-        const bbInput = document.getElementById('bank-balance');
-        if (bbInput) bbInput.value = weeklyData.bankBalance || '';
-    }
-
-    function renderDayButtons() {
-        ['SUN', 'TUE', 'EOW', 'EOM'].forEach(day => {
-            const btn = document.getElementById(`btn-${day.toLowerCase()}`);
-            if (btn) {
-                if (currentDay === day) btn.classList.add('active');
-                else btn.classList.remove('active');
-            }
+        // Day Buttons
+        ['sun', 'tue', 'eow', 'eom'].forEach(d => {
+            const el = document.getElementById(`btn-${d}`);
+            if (el) currentDay === d.toUpperCase() ? el.classList.add('active') : el.classList.remove('active');
         });
-    }
 
-    function renderIncomeInputs() {
-        const container = document.getElementById('income-inputs');
-        container.innerHTML = categories.map(cat => {
+        // Income
+        const incContainer = document.getElementById('income-inputs');
+        incContainer.innerHTML = categories.map(cat => {
             const val = weeklyData.income[currentDay]?.[cat.id] || '';
             return `
                 <div class="space-y-1">
                     <div class="flex justify-between items-end mb-1">
                         <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">${cat.label}</label>
-                        <span class="text-[9px] font-bold text-blue-500 uppercase">${currentDay} Entry</span>
                     </div>
-                    <div class="relative group">
-                        <span class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 font-bold group-focus-within:text-blue-400 transition-colors">$</span>
-                        <input type="number" 
-                            value="${val}"
+                    <div class="relative">
+                        <span class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 font-bold">$</span>
+                        <input type="number" step="0.01" value="${val}" 
                             oninput="window.updateIncome('${cat.id}', this.value)"
-                            placeholder="0.00" 
-                            ${weeklyData.finalized ? 'disabled' : ''}
-                            class="w-full input-inset p-4 pl-8 rounded-2xl font-bold text-slate-900 text-lg ${weeklyData.finalized ? 'opacity-50 cursor-not-allowed' : ''}">
-                        <div class="absolute right-4 top-1/2 -translate-y-1/2 font-black text-slate-200 text-sm">
-                            ${val ? Number(val).toFixed(2) : '0.00'}
+                            ${isFinalized ? 'disabled' : ''}
+                            class="w-full input-inset p-4 pl-8 rounded-2xl font-bold text-slate-900 text-lg ${isFinalized ? 'opacity-50' : ''}">
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        // Expenses
+        const expList = document.getElementById('expense-list');
+        let totalOut = 0;
+        if (!weeklyData.expenses?.length) {
+            expList.innerHTML = `<div class="text-center py-8 text-slate-300 italic text-sm">No expenses logged</div>`;
+        } else {
+            expList.innerHTML = weeklyData.expenses.map((exp, i) => {
+                totalOut += Number(exp.amount || 0);
+                return `
+                    <div class="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-2xl">
+                        <div class="font-bold text-slate-800">${exp.description}</div>
+                        <div class="flex items-center gap-4">
+                            <span class="font-black text-rose-500">-$${Number(exp.amount).toFixed(2)}</span>
+                            ${!isFinalized ? `<button onclick="window.removeExpense(${i})" class="text-slate-300 hover:text-rose-500">×</button>` : ''}
                         </div>
                     </div>
-                </div>
-            `;
-        }).join('');
-    }
-
-    function renderExpenses() {
-        const container = document.getElementById('expense-list');
-        const totalOutEl = document.getElementById('total-out');
-        
-        if (!weeklyData.expenses || weeklyData.expenses.length === 0) {
-            container.innerHTML = `<div class="text-center py-8 text-slate-300 italic text-sm">No expenses logged for this week</div>`;
-            totalOutEl.innerText = `$0.00 OUT`;
-            return;
+                `;
+            }).join('');
         }
+        document.getElementById('total-out').innerText = `$${totalOut.toFixed(2)} OUT`;
 
-        let totalOut = 0;
-        container.innerHTML = weeklyData.expenses.map((exp, idx) => {
-            totalOut += Number(exp.amount);
-            return `
-                <div class="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-2xl group hover:border-slate-200 transition-all">
-                    <div>
-                        <div class="font-bold text-slate-800">${exp.description}</div>
-                        <div class="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Logged by System</div>
-                    </div>
-                    <div class="flex items-center gap-4">
-                        <span class="font-black text-rose-500">-$${Number(exp.amount).toFixed(2)}</span>
-                        ${!weeklyData.finalized ? `
-                            <button onclick="window.removeExpense(${idx})" class="text-slate-300 hover:text-rose-500 transition-colors">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-                            </button>
-                        ` : ''}
-                    </div>
-                </div>
-            `;
-        }).join('');
+        // Totals
+        let totalInc = 0;
+        Object.values(weeklyData.income).forEach(day => {
+            Object.values(day).forEach(v => totalInc += Number(v || 0));
+        });
+        const net = totalInc - totalOut;
+        const netEl = document.getElementById('net-sum');
+        netEl.innerText = (net < 0 ? '-$' : '$') + Math.abs(net).toFixed(2);
+        netEl.className = `text-4xl md:text-5xl font-black tracking-tighter ${net < 0 ? 'text-rose-400' : 'text-emerald-400'}`;
+
+        document.getElementById('bank-balance').value = weeklyData.bankBalance || '';
+        document.getElementById('bank-balance').disabled = isFinalized;
         
-        totalOutEl.innerText = `$${totalOut.toFixed(2)} OUT`;
+        const fBtn = document.getElementById('finalize-btn');
+        fBtn.innerText = isFinalized ? "Locked (Finalized)" : "Finalize Week";
+        fBtn.disabled = isFinalized;
+        if (isFinalized) fBtn.classList.add('opacity-50', 'cursor-not-allowed');
     }
 
-    function updateNetSum() {
-        let totalIncome = 0;
-        Object.keys(weeklyData.income).forEach(day => {
-            Object.values(weeklyData.income[day]).forEach(val => {
-                totalIncome += Number(val || 0);
-            });
-        });
-
-        let totalExpense = 0;
-        weeklyData.expenses.forEach(exp => {
-            totalExpense += Number(exp.amount || 0);
-        });
-
-        const net = totalIncome - totalExpense;
-        const el = document.getElementById('net-sum');
-        el.innerText = (net < 0 ? '-$' : '$') + Math.abs(net).toFixed(2);
-        
-        if (net < 0) el.classList.replace('text-emerald-400', 'text-rose-400');
-        else el.classList.replace('text-rose-400', 'text-emerald-400');
-    }
-
-    // --- ACTIONS (Exposed to Window) ---
-    window.setDay = (day) => {
-        currentDay = day;
-        renderAll();
-    };
-
-    window.changeDate = (days) => {
-        currentWeekDate.setDate(currentWeekDate.getDate() + days);
-        setupDataListener(); // Refetch for new date
-    };
-
-    window.updateIncome = (catId, val) => {
+    // Window Globals
+    window.setDay = (day) => { currentDay = day; renderAll(); };
+    window.changeDate = (days) => { currentWeekDate.setDate(currentWeekDate.getDate() + days); setupDataListener(); };
+    window.updateIncome = (cat, val) => { 
         if (!weeklyData.income[currentDay]) weeklyData.income[currentDay] = {};
-        weeklyData.income[currentDay][catId] = val;
-        updateNetSum();
-        saveData();
-    };
-
-    window.addExpense = async () => {
-        const desc = document.getElementById('exp-desc');
-        const amt = document.getElementById('exp-amount');
-        if (!desc.value || !amt.value) return;
-
-        weeklyData.expenses.push({
-            description: desc.value,
-            amount: Number(amt.value),
-            timestamp: new Date().toISOString()
-        });
-
-        desc.value = '';
-        amt.value = '';
+        weeklyData.income[currentDay][cat] = val; 
+        saveData(); 
         renderAll();
-        await saveData();
     };
-
-    window.removeExpense = async (index) => {
-        weeklyData.expenses.splice(index, 1);
-        renderAll();
-        await saveData();
+    window.updateBankBalance = (val) => { weeklyData.bankBalance = val; saveData(); };
+    window.addExpense = () => {
+        const d = document.getElementById('exp-desc'), a = document.getElementById('exp-amount');
+        if (!d.value || !a.value) return;
+        weeklyData.expenses.push({ description: d.value, amount: a.value });
+        d.value = ''; a.value = '';
+        saveData(); renderAll();
     };
-
+    window.removeExpense = (i) => { weeklyData.expenses.splice(i, 1); saveData(); renderAll(); };
     window.finalizeWeek = () => {
-        showModal(
-            "Finalize Records?", 
-            "Finalizing will lock all entries for this week ending Friday. You won't be able to edit income or expenses after this.", 
-            [
-                { label: 'Cancel', action: hideModal, type: 'secondary' },
-                { label: 'Finalize Now', action: async () => {
-                    weeklyData.finalized = true;
-                    await saveData();
-                    hideModal();
-                    renderAll();
-                }, type: 'primary' }
-            ]
-        );
+        if (confirm("Finalize this week? This cannot be undone.")) {
+            weeklyData.finalized = true;
+            saveData(); renderAll();
+        }
     };
+    window.handleLogout = () => auth.signOut().then(() => location.reload());
 
-    window.handleLogout = () => {
-        auth.signOut().then(() => location.reload());
-    };
-
-    // --- UTILS ---
     function getNearestFriday(d) {
         const date = new Date(d);
         const day = date.getDay();
-        const diff = (day <= 5) ? (5 - day) : (12 - day); // Friday is 5
+        const diff = (day <= 5) ? (5 - day) : (12 - day);
         date.setDate(date.getDate() + diff);
         date.setHours(0,0,0,0);
         return date;
     }
+    function formatDate(d) { return `${d.getMonth() + 1}-${d.getDate()}-${d.getFullYear().toString().substr(-2)}`; }
 
-    function formatDate(d) {
-        const month = d.getMonth() + 1;
-        const day = d.getDate();
-        const year = d.getFullYear().toString().substr(-2);
-        return `${month}-${day}-${year}`;
-    }
-
-    function updateDisplayDate() {
-        const el = document.getElementById('display-date');
-        if (el) el.innerText = formatDate(currentWeekDate);
-    }
-
-    function showLoading(show) {
-        document.getElementById('loading-overlay').style.display = show ? 'flex' : 'none';
-    }
-
-    function showModal(title, body, actions) {
-        document.getElementById('modal-title').innerText = title;
-        document.getElementById('modal-body').innerText = body;
-        const footer = document.getElementById('modal-footer');
-        footer.innerHTML = '';
-        actions.forEach(a => {
-            const b = document.createElement('button');
-            b.innerText = a.label;
-            b.className = a.type === 'primary' 
-                ? "px-6 py-3 bg-slate-900 text-white font-bold rounded-xl text-sm" 
-                : "px-6 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl text-sm";
-            b.onclick = a.action;
-            footer.appendChild(b);
-        });
-        document.getElementById('custom-modal').style.display = 'flex';
-    }
-
-    function hideModal() {
-        document.getElementById('custom-modal').style.display = 'none';
-    }
-
-    // Attach bank balance listener
-    const bb = document.getElementById('bank-balance');
-    bb.addEventListener('change', (e) => {
-        weeklyData.bankBalance = e.target.value;
-        saveData();
-    });
-
-    // Run init
-    init();
-
+    initAuth();
 </script>
-
 </body>
 </html>

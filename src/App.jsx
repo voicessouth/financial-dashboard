@@ -27,27 +27,38 @@ import {
   Wallet,
   CalendarDays,
   AlertCircle,
-  Loader2
+  Loader2,
+  RefreshCw
 } from 'lucide-react';
 
-// --- FIREBASE INITIALIZATION ---
-// Safe initialization to prevent multiple instances
-const firebaseConfig = JSON.parse(__firebase_config);
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
-const auth = getAuth(app);
-const db = getFirestore(app);
+/**
+ * FIREBASE INITIALIZATION
+ * Uses environment-injected globals. 
+ * Do NOT manually paste config here.
+ */
+const getFirebaseConfig = () => {
+  try {
+    return JSON.parse(__firebase_config);
+  } catch (e) {
+    console.error("Firebase Config missing or invalid");
+    return null;
+  }
+};
+
+const config = getFirebaseConfig();
+const app = (config && getApps().length === 0) ? initializeApp(config) : getApps()[0];
+const auth = app ? getAuth(app) : null;
+const db = app ? getFirestore(app) : null;
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'voices-south-portal';
 
 export default function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [statusMessage, setStatusMessage] = useState("Establishing Secure Connection...");
   const [error, setError] = useState(null);
+  const [authStage, setAuthStage] = useState("Checking System Configuration...");
   
-  // Reporting Date: Anchored to Jan 2, 2026 as requested
+  // App State
   const [activeDate, setActiveDate] = useState(() => new Date(2026, 0, 2));
-
-  // Dashboard State
   const [isFinalized, setIsFinalized] = useState(false);
   const [income, setIncome] = useState({
     cash: 0, credit: 0, text: 0, givelify: 0, 
@@ -61,61 +72,68 @@ export default function App() {
     'MAINTENANCE', 'SUPPLIES', 'MINISTRY', 'TRAVEL', 'OTHER'
   ];
 
-  // --- RESILIENT AUTHENTICATION FLOW ---
+  // --- COMPREHENSIVE AUTHENTICATION BOOTSTRAP ---
   useEffect(() => {
-    let mounted = true;
+    if (!auth) {
+      setError("Firebase Configuration not found. Please refresh the page.");
+      return;
+    }
 
-    const startAuth = async () => {
+    let isMounted = true;
+
+    const initConnection = async () => {
       try {
-        setStatusMessage("Authenticating with Vault...");
+        setAuthStage("Establishing Security Handshake...");
         
-        // Use custom token if provided, otherwise anonymous
+        // Priority 1: Custom Token from Environment
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          setAuthStage("Authenticating with Custom Token...");
           await signInWithCustomToken(auth, __initial_auth_token);
         } else {
+          // Priority 2: Anonymous Fallback
+          setAuthStage("Starting Secure Guest Session...");
           await signInAnonymously(auth);
         }
       } catch (err) {
         console.error("Auth Error:", err);
-        if (mounted) setError("Failed to connect to the security server. Please refresh.");
+        if (isMounted) setError(`Authentication Failed: ${err.message}`);
       }
     };
 
-    // Listen for auth state changes
+    // Listen for Auth Changes
     const unsubscribe = onAuthStateChanged(auth, (u) => {
-      if (mounted) {
+      if (isMounted) {
         if (u) {
+          setAuthStage("Access Granted. Syncing Ledger...");
           setUser(u);
-          setLoading(false);
-          setError(null);
+          // Small delay to ensure Firestore is ready
+          setTimeout(() => setLoading(false), 500);
         } else {
-          // If no user, trigger auth
-          startAuth();
+          initConnection();
         }
       }
     });
 
-    // Cleanup
     return () => {
-      mounted = false;
+      isMounted = false;
       unsubscribe();
     };
   }, []);
 
-  // --- DATA FETCHING ---
+  // --- DATA SYNC ---
   const dateKey = useMemo(() => {
     const d = new Date(activeDate);
     return `${d.getMonth() + 1}-${d.getDate()}-${d.getFullYear()}`;
   }, [activeDate]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !db) return;
 
-    // Path setup based on Rule 1
-    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'finance_reports', dateKey);
-    const expColRef = collection(db, 'artifacts', appId, 'public', 'data', 'finance_reports', dateKey, 'expenses');
+    // RULE 1: Strict Paths
+    const reportPath = ['artifacts', appId, 'public', 'data', 'finance_reports', dateKey];
+    const docRef = doc(db, ...reportPath);
+    const expColRef = collection(db, ...reportPath, 'expenses');
 
-    // Subscribe to Report Document
     const unsubDoc = onSnapshot(docRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
@@ -125,21 +143,19 @@ export default function App() {
         });
         setIsFinalized(data.status === 'finalized');
       } else {
-        // Reset for new date
         setIncome({ cash: 0, credit: 0, text: 0, givelify: 0, tithely: 0, cashapp: 0, zelle: 0, website: 0 });
         setIsFinalized(false);
       }
     }, (err) => {
-      console.error("Firestore Error:", err);
-      setError("Sync interrupted. Retrying...");
+      console.error("Firestore Doc Error:", err);
+      // Don't show full screen error for background sync fails
     });
 
-    // Subscribe to Expenses
     const unsubExp = onSnapshot(expColRef, (snap) => {
-      const exps = [];
-      snap.forEach(d => exps.push({ id: d.id, ...d.data() }));
-      setExpenses(exps.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)));
-    });
+      const items = [];
+      snap.forEach(d => items.push({ id: d.id, ...d.data() }));
+      setExpenses(items.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)));
+    }, (err) => console.error("Firestore Exp Error:", err));
 
     return () => {
       unsubDoc();
@@ -152,47 +168,43 @@ export default function App() {
     if (isFinalized || !user) return;
     const numericVal = parseFloat(val) || 0;
     const newIncome = { ...income, [key]: numericVal };
-    setIncome(newIncome); // Optimistic update
+    setIncome(newIncome);
     
     try {
-      const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'finance_reports', dateKey);
-      await setDoc(docRef, {
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'finance_reports', dateKey), {
         income: newIncome,
         lastUpdated: new Date().toISOString()
       }, { merge: true });
-    } catch (e) { console.error("Save error:", e); }
+    } catch (e) { console.error("Update failed:", e); }
   };
 
   const addExpense = async () => {
     if (!newExpense.amount || isFinalized || !user) return;
-    const entry = {
-      category: newExpense.category,
-      amount: parseFloat(newExpense.amount),
-      timestamp: new Date().toISOString()
-    };
-    
     try {
       const colRef = collection(db, 'artifacts', appId, 'public', 'data', 'finance_reports', dateKey, 'expenses');
-      await addDoc(colRef, entry);
+      await addDoc(colRef, {
+        category: newExpense.category,
+        amount: parseFloat(newExpense.amount),
+        timestamp: new Date().toISOString()
+      });
       setNewExpense({ ...newExpense, amount: '' });
-    } catch (e) { console.error("Add expense error:", e); }
+    } catch (e) { console.error("Add failed:", e); }
   };
 
   const deleteExpense = async (id) => {
     if (isFinalized || !user) return;
     try {
       await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'finance_reports', dateKey, 'expenses', id));
-    } catch (e) { console.error("Delete error:", e); }
+    } catch (e) { console.error("Delete failed:", e); }
   };
 
   const toggleFinalize = async () => {
     if (!user) return;
     try {
-      const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'finance_reports', dateKey);
-      await setDoc(docRef, { 
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'finance_reports', dateKey), { 
         status: isFinalized ? 'draft' : 'finalized' 
       }, { merge: true });
-    } catch (e) { console.error("Status update error:", e); }
+    } catch (e) { console.error("Status toggle failed:", e); }
   };
 
   const changeWeek = (direction) => {
@@ -201,130 +213,156 @@ export default function App() {
     setActiveDate(newDate);
   };
 
-  // --- CALCULATIONS ---
   const totalIncome = useMemo(() => Object.values(income).reduce((a, b) => a + (Number(b) || 0), 0), [income]);
   const totalExpenses = useMemo(() => expenses.reduce((a, b) => a + (Number(b.amount) || 0), 0), [expenses]);
   const netSum = totalIncome - totalExpenses;
 
-  // --- LOADING / ERROR STATES ---
-  if (loading) {
+  // --- RENDER STATES ---
+  if (loading || error) {
     return (
-      <div className="min-h-screen bg-[#0F172A] flex flex-col items-center justify-center p-6 text-center">
-        <div className="relative mb-8">
-          <div className="absolute inset-0 bg-indigo-500/20 blur-3xl rounded-full"></div>
-          <Database className="w-16 h-16 text-indigo-400 animate-pulse relative z-10" />
+      <div className="min-h-screen bg-[#020617] flex flex-col items-center justify-center p-8 text-center">
+        <div className="relative mb-10">
+          <div className="absolute inset-0 bg-blue-500/20 blur-[100px] animate-pulse"></div>
+          {error ? (
+            <AlertCircle className="w-20 h-20 text-rose-500 relative z-10" />
+          ) : (
+            <Database className="w-20 h-20 text-blue-500 animate-bounce relative z-10" />
+          )}
         </div>
-        <h2 className="text-white font-black text-2xl tracking-tighter uppercase mb-3">Initializing Portal</h2>
-        <div className="flex items-center gap-2 justify-center text-indigo-300/60 font-bold text-[10px] uppercase tracking-[0.3em]">
-          <Loader2 className="w-3 h-3 animate-spin" />
-          {error ? <span className="text-rose-400">{error}</span> : <span>{statusMessage}</span>}
+        
+        <h2 className="text-white text-3xl font-black tracking-tighter uppercase mb-4">
+          {error ? "System Blocked" : "Portal Initializing"}
+        </h2>
+        
+        <div className="max-w-md bg-white/5 border border-white/10 p-6 rounded-[2rem] backdrop-blur-md">
+          <p className={`text-sm font-bold tracking-widest uppercase mb-4 ${error ? 'text-rose-400' : 'text-blue-400'}`}>
+            {error ? "Security Exception Detected" : "Current Status"}
+          </p>
+          <p className="text-slate-400 text-xs font-medium leading-relaxed mb-6">
+            {error || authStage}
+          </p>
+          
+          {error && (
+            <button 
+              onClick={() => window.location.reload()} 
+              className="flex items-center gap-2 mx-auto bg-white text-black px-6 py-3 rounded-full font-black text-[10px] uppercase tracking-widest hover:bg-blue-500 hover:text-white transition-all"
+            >
+              <RefreshCw className="w-3 h-3" /> Force Reboot
+            </button>
+          )}
         </div>
+
+        {!error && (
+          <div className="mt-8 flex gap-2">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="w-1.5 h-1.5 rounded-full bg-blue-500/40 animate-ping" style={{animationDelay: `${i * 0.2}s`}}></div>
+            ))}
+          </div>
+        )}
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-slate-900 pb-40 font-sans">
-      <header className="bg-white/80 backdrop-blur-md px-6 py-5 flex justify-between items-center sticky top-0 z-20 border-b border-slate-200">
+    <div className="min-h-screen bg-[#F8FAFC] text-slate-900 pb-40">
+      {/* Header */}
+      <header className="bg-white/80 backdrop-blur-md px-6 py-5 flex justify-between items-center sticky top-0 z-40 border-b border-slate-200">
         <div className="flex items-center gap-3">
-          <div className="bg-indigo-600 p-2 rounded-xl shadow-lg shadow-indigo-200">
+          <div className="bg-blue-600 p-2.5 rounded-2xl shadow-xl shadow-blue-200">
             <LayoutDashboard className="text-white w-5 h-5" />
           </div>
           <div>
-            <h1 className="font-black text-lg uppercase tracking-tighter leading-none">Voices South</h1>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Finance Dashboard</p>
+            <h1 className="font-black text-xl uppercase tracking-tighter leading-none">Voices South</h1>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-1.5">Treasury Operations</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 rounded-full border border-emerald-100">
+        <div className="flex items-center gap-2.5 px-4 py-2 bg-emerald-50 rounded-full border border-emerald-100 shadow-sm shadow-emerald-50">
           <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-          <span className="text-[10px] font-black text-emerald-600 uppercase">System Active</span>
+          <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Live Sync</span>
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto p-4 md:p-8 space-y-6">
-        {/* Date Selector */}
-        <section className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-slate-200 text-center relative overflow-hidden group">
-          <div className="absolute inset-0 bg-indigo-50 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
-          <div className="relative z-10 flex items-center justify-center gap-8">
-            <button onClick={() => changeWeek(-1)} className="p-4 bg-slate-50 rounded-full hover:bg-white hover:shadow-md transition-all active:scale-90">
+      <main className="max-w-4xl mx-auto p-4 md:p-10 space-y-8">
+        {/* Date Context */}
+        <section className="bg-white rounded-[3rem] p-10 shadow-sm border border-slate-200 text-center relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
+            <CalendarDays className="w-32 h-32" />
+          </div>
+          <div className="relative z-10 flex items-center justify-between max-w-sm mx-auto">
+            <button onClick={() => changeWeek(-1)} className="p-4 bg-slate-50 rounded-full hover:bg-white hover:shadow-xl transition-all active:scale-90 border border-transparent hover:border-slate-100">
               <ChevronLeft className="w-6 h-6 text-slate-400"/>
             </button>
-            <div className="min-w-[240px]">
-              <div className="flex items-center justify-center gap-2 text-indigo-600 mb-1">
-                <CalendarDays className="w-3 h-3" />
-                <span className="text-[10px] font-black uppercase tracking-[0.2em]">Current Period</span>
-              </div>
+            <div className="flex flex-col items-center">
+              <span className="text-[10px] font-black text-blue-600 uppercase tracking-[0.3em] mb-2 bg-blue-50 px-3 py-1 rounded-full">Reporting Cycle</span>
               <p className="text-4xl font-black text-slate-800 tracking-tighter">{dateKey}</p>
             </div>
-            <button onClick={() => changeWeek(1)} className="p-4 bg-slate-50 rounded-full hover:bg-white hover:shadow-md transition-all active:scale-90">
+            <button onClick={() => changeWeek(1)} className="p-4 bg-slate-50 rounded-full hover:bg-white hover:shadow-xl transition-all active:scale-90 border border-transparent hover:border-slate-100">
               <ChevronRight className="w-6 h-6 text-slate-400"/>
             </button>
           </div>
         </section>
 
-        <div className="grid md:grid-cols-2 gap-6">
-          {/* Income Column */}
-          <section className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-slate-200">
-            <h2 className="text-[11px] font-black uppercase tracking-widest text-slate-400 mb-8 flex items-center gap-3">
-               <TrendingUp className="w-4 h-4 text-emerald-500" /> Revenue Stream
+        <div className="grid md:grid-cols-2 gap-8">
+          {/* Revenue Inputs */}
+          <section className="bg-white rounded-[3rem] p-10 shadow-sm border border-slate-200">
+            <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400 mb-10 flex items-center gap-4">
+               <TrendingUp className="w-4 h-4 text-emerald-500" /> Revenue Streams
             </h2>
-            <div className="space-y-5">
+            <div className="space-y-6">
               {Object.keys(income).map((key) => (
-                <div key={key} className="group flex items-center justify-between border-b border-slate-100 pb-3">
-                  <span className="text-[11px] font-bold uppercase text-slate-400 group-focus-within:text-indigo-600 transition-colors">{key}</span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-slate-300 font-bold text-sm">$</span>
+                <div key={key} className="group flex items-center justify-between border-b border-slate-50 pb-4 transition-all focus-within:border-blue-200">
+                  <span className="text-[11px] font-bold uppercase text-slate-400 group-focus-within:text-blue-600 transition-colors">{key}</span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-slate-200 font-black text-lg">$</span>
                     <input
                       type="number"
                       disabled={isFinalized}
                       value={income[key] || ''}
                       onChange={(e) => handleIncomeChange(key, e.target.value)}
-                      className="w-28 text-right font-black text-xl text-slate-800 focus:outline-none bg-transparent disabled:opacity-40"
+                      className="w-28 text-right font-black text-2xl text-slate-800 focus:outline-none bg-transparent disabled:opacity-30"
                       placeholder="0.00"
                     />
                   </div>
                 </div>
               ))}
             </div>
-            <div className="mt-10 pt-6 border-t border-dashed border-slate-200 flex justify-between items-end">
-                <p className="text-[10px] font-black text-slate-400 uppercase">Gross Total</p>
-                <p className="text-3xl font-black text-emerald-600 tracking-tighter">${totalIncome.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
+            <div className="mt-12 pt-8 border-t-2 border-dashed border-slate-100 flex justify-between items-center">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Deposits</p>
+                <p className="text-4xl font-black text-emerald-600 tracking-tighter">${totalIncome.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
             </div>
           </section>
 
-          {/* Expense Column */}
-          <div className="space-y-6">
-            <section className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-slate-200">
-              <h2 className="text-[11px] font-black uppercase tracking-widest text-slate-400 mb-8 flex items-center gap-3">
-                 <Plus className="w-4 h-4 text-rose-500" /> Quick Add Expense
+          {/* Expense Management */}
+          <div className="space-y-8">
+            <section className="bg-white rounded-[3rem] p-10 shadow-sm border border-slate-200">
+              <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400 mb-8 flex items-center gap-4">
+                 <Plus className="w-4 h-4 text-rose-500" /> New Transaction
               </h2>
-              <div className="space-y-4">
-                <div className="relative">
-                  <select 
-                    disabled={isFinalized}
-                    value={newExpense.category}
-                    onChange={(e) => setNewExpense({...newExpense, category: e.target.value})}
-                    className="w-full bg-slate-50 p-4 rounded-2xl font-bold text-sm outline-none border border-slate-100 focus:ring-4 ring-indigo-500/5 appearance-none disabled:opacity-50"
-                  >
-                    {categories.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </div>
-                <div className="flex gap-3">
+              <div className="space-y-5">
+                <select 
+                  disabled={isFinalized}
+                  value={newExpense.category}
+                  onChange={(e) => setNewExpense({...newExpense, category: e.target.value})}
+                  className="w-full bg-slate-50 p-5 rounded-3xl font-bold text-sm outline-none border-2 border-transparent focus:border-blue-500/10 focus:bg-white transition-all appearance-none disabled:opacity-50 cursor-pointer"
+                >
+                  {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <div className="flex gap-4">
                   <div className="relative flex-1">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 font-bold">$</span>
+                    <span className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300 font-black">$</span>
                     <input
                       type="number"
                       disabled={isFinalized}
                       value={newExpense.amount}
                       onChange={(e) => setNewExpense({...newExpense, amount: e.target.value})}
                       placeholder="0.00"
-                      className="w-full bg-slate-50 pl-10 pr-4 py-4 rounded-2xl font-black text-lg outline-none border border-slate-100 focus:ring-4 ring-indigo-500/5 disabled:opacity-50"
+                      className="w-full bg-slate-50 pl-12 pr-6 py-5 rounded-3xl font-black text-xl outline-none border-2 border-transparent focus:border-blue-500/10 focus:bg-white transition-all disabled:opacity-50"
                     />
                   </div>
                   <button 
                     onClick={addExpense} 
                     disabled={isFinalized || !newExpense.amount}
-                    className="bg-slate-900 text-white p-4 rounded-2xl px-8 hover:bg-indigo-600 transition-all active:scale-95 disabled:bg-slate-100 disabled:text-slate-300"
+                    className="bg-slate-900 text-white p-5 rounded-3xl px-10 hover:bg-blue-600 hover:shadow-xl hover:shadow-blue-200 transition-all active:scale-95 disabled:bg-slate-100 disabled:text-slate-300 disabled:shadow-none"
                   >
                     <Plus className="w-6 h-6" />
                   </button>
@@ -332,30 +370,30 @@ export default function App() {
               </div>
             </section>
 
-            <section className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-slate-200">
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="text-[11px] font-black uppercase tracking-widest text-slate-400">Expense Journal</h3>
-                <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full uppercase tracking-tighter">{expenses.length} Records</span>
+            <section className="bg-white rounded-[3rem] p-10 shadow-sm border border-slate-200">
+              <div className="flex justify-between items-center mb-8">
+                <h3 className="text-[11px] font-black uppercase tracking-widest text-slate-400">Activity Ledger</h3>
+                <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-4 py-1.5 rounded-full uppercase">{expenses.length} Items</span>
               </div>
-              <div className="space-y-3 max-h-[350px] overflow-y-auto pr-2 custom-scrollbar">
+              <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
                 {expenses.length === 0 ? (
-                  <div className="text-center py-12 border-2 border-dashed border-slate-50 rounded-3xl">
-                    <Wallet className="w-8 h-8 text-slate-100 mx-auto mb-2" />
-                    <p className="text-slate-300 text-[10px] font-bold uppercase tracking-widest">Awaiting data</p>
+                  <div className="text-center py-16 opacity-20">
+                    <Wallet className="w-12 h-12 mx-auto mb-4" />
+                    <p className="text-[10px] font-black uppercase tracking-[0.3em]">No Debits Recorded</p>
                   </div>
                 ) : (
                   expenses.map(exp => (
-                    <div key={exp.id} className="group flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-transparent hover:border-slate-100 hover:bg-white transition-all">
+                    <div key={exp.id} className="group flex items-center justify-between p-5 bg-slate-50 rounded-3xl border-2 border-transparent hover:border-slate-100 hover:bg-white transition-all duration-300">
                       <div className="flex-1">
-                        <p className="text-[10px] font-black text-slate-800 leading-none uppercase tracking-tight">{exp.category}</p>
-                        <p className="text-[8px] text-slate-400 font-bold mt-1.5 uppercase">
-                          {new Date(exp.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                        <p className="text-[11px] font-black text-slate-800 leading-none uppercase mb-2">{exp.category}</p>
+                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">
+                          {new Date(exp.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second: '2-digit'})}
                         </p>
                       </div>
-                      <div className="flex items-center gap-4">
-                        <p className="font-black text-rose-500 text-sm">-${Number(exp.amount).toFixed(2)}</p>
+                      <div className="flex items-center gap-6">
+                        <p className="font-black text-rose-500 text-lg">-${Number(exp.amount).toFixed(2)}</p>
                         {!isFinalized && (
-                          <button onClick={() => deleteExpense(exp.id)} className="text-slate-200 hover:text-rose-500 transition-colors p-1">
+                          <button onClick={() => deleteExpense(exp.id)} className="text-slate-200 hover:text-rose-500 transition-colors p-2 hover:bg-rose-50 rounded-xl">
                              <Trash2 className="w-4 h-4" />
                           </button>
                         )}
@@ -364,50 +402,50 @@ export default function App() {
                   ))
                 )}
               </div>
-              <div className="mt-6 pt-5 border-t border-slate-100 flex justify-between items-center">
-                <span className="text-[10px] font-black text-slate-400 uppercase">Debit Sum</span>
-                <span className="text-2xl font-black text-rose-500 tracking-tighter">-${totalExpenses.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+              <div className="mt-8 pt-8 border-t border-slate-100 flex justify-between items-center">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Debits</span>
+                <span className="text-3xl font-black text-rose-500 tracking-tighter">-${totalExpenses.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
               </div>
             </section>
           </div>
         </div>
       </main>
 
-      {/* Floating Bottom Bar */}
-      <div className="fixed bottom-8 left-1/2 -translate-x-1/2 w-[95%] max-w-xl z-30">
-        <div className="bg-white/90 backdrop-blur-xl rounded-[3rem] p-4 shadow-[0_32px_64px_rgba(0,0,0,0.15)] border border-white/50 flex flex-col sm:flex-row items-center gap-4">
-          <div className={`flex-1 rounded-[2.5rem] p-6 text-white flex items-center justify-between w-full transition-colors duration-500 ${netSum >= 0 ? 'bg-slate-900' : 'bg-rose-950'}`}>
+      {/* Persistence Bar */}
+      <div className="fixed bottom-10 left-1/2 -translate-x-1/2 w-[90%] max-w-2xl z-50">
+        <div className="bg-white/70 backdrop-blur-2xl rounded-[3.5rem] p-5 shadow-[0_40px_80px_-20px_rgba(0,0,0,0.25)] border border-white/40 flex flex-col sm:flex-row items-center gap-5">
+          <div className={`flex-1 rounded-[3rem] p-7 text-white flex items-center justify-between w-full transition-all duration-700 shadow-inner ${netSum >= 0 ? 'bg-slate-900 shadow-slate-800/50' : 'bg-rose-950 shadow-rose-900/50'}`}>
             <div>
-              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Net Liquidity</p>
-              <p className={`text-3xl font-black tracking-tighter ${netSum >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-2">Weekly Net Projection</p>
+              <p className={`text-4xl font-black tracking-tighter ${netSum >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                 ${netSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </p>
             </div>
-            {netSum < 0 && <AlertCircle className="w-6 h-6 text-rose-500 animate-bounce" />}
           </div>
           
           <button 
             onClick={toggleFinalize}
-            className={`w-full sm:w-auto px-8 py-6 rounded-[2.5rem] font-black text-[11px] uppercase tracking-widest transition-all shadow-xl active:scale-95 flex items-center justify-center gap-2 whitespace-nowrap ${
+            className={`w-full sm:w-auto px-12 py-8 rounded-[3rem] font-black text-[11px] uppercase tracking-[0.3em] transition-all shadow-2xl active:scale-95 flex items-center justify-center gap-3 whitespace-nowrap ${
               isFinalized 
               ? 'bg-rose-100 text-rose-600 border border-rose-200 hover:bg-rose-200' 
-              : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200 hover:shadow-indigo-300'
+              : 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-200'
             }`}
           >
             {isFinalized ? (
-              <><Lock className="w-4 h-4" /> Unlock Report</>
+              <><Lock className="w-5 h-5" /> Unlock Period</>
             ) : (
-              'Finalize Report'
+              'Finalize Ledger'
             )}
           </button>
         </div>
       </div>
 
       <style>{`
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar { width: 5px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #E2E8F0; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
-        body { font-family: 'Inter', sans-serif; }
+        body { font-family: 'Inter', sans-serif; overflow-x: hidden; }
       `}</style>
     </div>
   );

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
@@ -8,52 +8,72 @@ import {
 } from 'firebase/auth';
 import { 
   getFirestore, 
-  collection, 
   doc, 
   setDoc, 
+  collection, 
   onSnapshot, 
-  query,
-  Timestamp 
+  addDoc,
+  deleteDoc,
+  query
 } from 'firebase/firestore';
 import { 
   LayoutDashboard, 
-  PlusCircle, 
-  History, 
-  LogOut, 
+  Plus, 
   ChevronLeft, 
   ChevronRight, 
-  Copy, 
-  Check, 
-  AlertCircle,
-  Loader2,
-  RefreshCw
+  Database, 
+  Trash2,
+  Lock,
+  TrendingUp,
+  Wallet,
+  CalendarDays
 } from 'lucide-react';
 
-// --- Firebase Configuration ---
+// --- INITIALIZATION ---
 const firebaseConfig = JSON.parse(__firebase_config);
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'voices-south-portal';
 
 export default function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [authError, setAuthError] = useState(null);
-  const [logs, setLogs] = useState([]);
-  const [view, setView] = useState('dashboard'); // 'dashboard', 'history', 'month'
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [copySuccess, setCopySuccess] = useState(false);
-  const [currentDate, setCurrentDate] = useState(new Date());
+  
+  // Set initial anchor to January 2, 2026
+  const [activeDate, setActiveDate] = useState(() => {
+    const anchor = new Date(2026, 0, 2); // Jan 2, 2026
+    const today = new Date();
+    
+    // If today is past the anchor, find the closest Friday (7-day interval)
+    if (today > anchor) {
+      const diffTime = Math.abs(today - anchor);
+      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+      const weeksElapsed = Math.floor(diffDays / 7);
+      const currentWeekDate = new Date(anchor);
+      currentWeekDate.setDate(anchor.getDate() + (weeksElapsed * 7));
+      return currentWeekDate;
+    }
+    return anchor;
+  });
 
-  // --- Auth & Connection Logic ---
+  const [isFinalized, setIsFinalized] = useState(false);
+  
+  // Financial State
+  const [income, setIncome] = useState({
+    cash: 0, credit: 0, text: 0, givelify: 0, 
+    tithely: 0, cashapp: 0, zelle: 0, website: 0
+  });
+  const [expenses, setExpenses] = useState([]);
+  const [newExpense, setNewExpense] = useState({ category: 'Lady Val Payroll', amount: '' });
+
+  const categories = [
+    'Lady Val Payroll', 'MORTGAGE - KIRKLAND GROUP', 'UTILITIES', 
+    'MAINTENANCE', 'SUPPLIES', 'MINISTRY', 'TRAVEL', 'OTHER'
+  ];
+
+  // --- AUTHENTICATION ---
   useEffect(() => {
-    let authTimeout = setTimeout(() => {
-      if (!user && loading) {
-        setAuthError("Connection taking longer than expected. Please check your internet or refresh the page.");
-      }
-    }, 8000);
-
     const initAuth = async () => {
       try {
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
@@ -62,288 +82,306 @@ export default function App() {
           await signInAnonymously(auth);
         }
       } catch (err) {
-        console.error("Auth Error:", err);
-        setAuthError("Failed to establish a secure connection. Please refresh.");
+        console.error("Auth failed:", err);
       }
     };
-
     initAuth();
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
-      if (u) {
-        setLoading(false);
-        setAuthError(null);
-        clearTimeout(authTimeout);
-      }
+      setLoading(false);
     });
-
-    return () => {
-      unsubscribe();
-      clearTimeout(authTimeout);
-    };
+    return () => unsubscribe();
   }, []);
 
-  // --- Data Subscription ---
+  // --- DATE LOGIC ---
+  const dateKey = useMemo(() => {
+    const d = new Date(activeDate);
+    return `${d.getMonth() + 1}-${d.getDate()}-${d.getFullYear()}`;
+  }, [activeDate]);
+
+  const changeWeek = (direction) => {
+    const newDate = new Date(activeDate);
+    newDate.setDate(activeDate.getDate() + (direction * 7));
+    setActiveDate(newDate);
+  };
+
+  // --- DATA SYNC ---
+  const getDocPath = (key) => doc(db, 'artifacts', appId, 'public', 'data', 'finance_reports', key);
+  const getExpColPath = (key) => collection(db, 'artifacts', appId, 'public', 'data', 'finance_reports', key, 'expenses');
+
   useEffect(() => {
     if (!user) return;
 
-    const logsRef = collection(db, 'artifacts', appId, 'public', 'data', 'work_logs');
-    const unsubscribe = onSnapshot(
-      logsRef,
-      (snapshot) => {
-        const data = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-          timestamp: doc.data().timestamp?.toDate() || new Date()
-        }));
-        setLogs(data.sort((a, b) => b.timestamp - a.timestamp));
-        setLoading(false);
-      },
-      (err) => {
-        console.error("Firestore Error:", err);
-        // Don't set global error here to allow UI to remain interactive
+    const unsubDoc = onSnapshot(getDocPath(dateKey), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setIncome(data.income || {
+          cash: 0, credit: 0, text: 0, givelify: 0, 
+          tithely: 0, cashapp: 0, zelle: 0, website: 0
+        });
+        setIsFinalized(data.status === 'finalized');
+      } else {
+        setIncome({ cash: 0, credit: 0, text: 0, givelify: 0, tithely: 0, cashapp: 0, zelle: 0, website: 0 });
+        setIsFinalized(false);
       }
-    );
+    }, (err) => console.error("Snapshot Error:", err));
 
-    return () => unsubscribe();
-  }, [user]);
+    const unsubExp = onSnapshot(getExpColPath(dateKey), (snap) => {
+      const exps = [];
+      snap.forEach(d => exps.push({ id: d.id, ...d.data() }));
+      setExpenses(exps.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)));
+    });
 
-  // --- Actions ---
-  const handleAddLog = async (type) => {
-    if (!user || isSubmitting) return;
-    setIsSubmitting(true);
+    return () => {
+      unsubDoc();
+      unsubExp();
+    };
+  }, [user, dateKey]);
+
+  // --- ACTIONS ---
+  const handleIncomeChange = async (key, val) => {
+    if (isFinalized) return;
+    const numericVal = parseFloat(val) || 0;
+    const newIncome = { ...income, [key]: numericVal };
+    setIncome(newIncome);
     
     try {
-      const logId = crypto.randomUUID();
-      const logRef = doc(db, 'artifacts', appId, 'public', 'data', 'work_logs', logId);
-      
-      await setDoc(logRef, {
-        userId: user.uid,
-        userName: user.isAnonymous ? 'Anonymous User' : (user.displayName || user.email),
-        type: type,
-        timestamp: Timestamp.now()
-      });
-    } catch (err) {
-      console.error("Add Log Error:", err);
-    } finally {
-      setIsSubmitting(false);
-    }
+      await setDoc(getDocPath(dateKey), {
+        income: newIncome,
+        lastUpdated: new Date().toISOString()
+      }, { merge: true });
+    } catch (e) { console.error("Save error:", e); }
   };
 
-  const copyForSheets = () => {
-    const header = "Date\tTime\tType\tUser\n";
-    const rows = logs.map(log => {
-      const date = log.timestamp.toLocaleDateString();
-      const time = log.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      return `${date}\t${time}\t${log.type}\t${log.userName}`;
-    }).join('\n');
+  const addExpense = async () => {
+    if (!newExpense.amount || isFinalized) return;
+    const entry = {
+      category: newExpense.category,
+      amount: parseFloat(newExpense.amount),
+      timestamp: new Date().toISOString()
+    };
     
-    const textArea = document.createElement("textarea");
-    textArea.value = header + rows;
-    document.body.appendChild(textArea);
-    textArea.select();
     try {
-      document.execCommand('copy');
-      setCopySuccess(true);
-      setTimeout(() => setCopySuccess(false), 2000);
-    } catch (err) {
-      console.error('Copy failed', err);
-    }
-    document.body.removeChild(textArea);
+      await addDoc(getExpColPath(dateKey), entry);
+      setNewExpense({ ...newExpense, amount: '' });
+    } catch (e) { console.error("Add expense error:", e); }
   };
 
-  // --- UI Components ---
-  if (authError) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 text-center">
-        <div className="bg-white p-8 rounded-2xl shadow-xl max-w-sm w-full border border-red-100">
-          <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-          <h1 className="text-xl font-bold text-slate-800 mb-2">Connection Issue</h1>
-          <p className="text-slate-600 mb-6">{authError}</p>
-          <button 
-            onClick={() => window.location.reload()}
-            className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition-colors"
-          >
-            <RefreshCw className="w-5 h-5" />
-            Retry Connection
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const deleteExpense = async (id) => {
+    if (isFinalized) return;
+    try {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'finance_reports', dateKey, 'expenses', id));
+    } catch (e) { console.error("Delete error:", e); }
+  };
+
+  const toggleFinalize = async () => {
+    const newStatus = isFinalized ? 'draft' : 'finalized';
+    if (newStatus === 'finalized' && !window.confirm("Lock this week's records? You won't be able to edit them without unlocking.")) return;
+    
+    try {
+      await setDoc(getDocPath(dateKey), { status: newStatus }, { merge: true });
+    } catch (e) { console.error("Status update error:", e); }
+  };
+
+  const totalIncome = useMemo(() => Object.values(income).reduce((a, b) => a + (Number(b) || 0), 0), [income]);
+  const totalExpenses = useMemo(() => expenses.reduce((a, b) => a + (Number(b.amount) || 0), 0), [expenses]);
+  const netSum = totalIncome - totalExpenses;
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6">
-        <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-4" />
-        <p className="text-slate-600 font-medium animate-pulse">Initializing secure connection...</p>
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 text-center">
+        <Database className="w-10 h-10 text-indigo-500 animate-pulse mb-4" />
+        <h2 className="text-slate-800 font-black text-xl tracking-tighter uppercase">Securing Connection</h2>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans pb-20 md:pb-0">
-      {/* Header */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
-        <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="bg-blue-600 p-2 rounded-lg">
-              <LayoutDashboard className="w-5 h-5 text-white" />
-            </div>
-            <h1 className="font-bold text-lg tracking-tight">ShiftTracker</h1>
+    <div className="min-h-screen bg-[#F8FAFC] text-slate-900 pb-40">
+      <header className="bg-white px-6 py-5 flex justify-between items-center sticky top-0 z-20 shadow-sm border-b border-slate-200">
+        <div className="flex items-center gap-3">
+          <div className="bg-indigo-600 p-2 rounded-xl shadow-lg shadow-indigo-100">
+            <LayoutDashboard className="text-white w-5 h-5" />
           </div>
-          <div className="flex items-center gap-2">
-            <button 
-              onClick={copyForSheets}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                copySuccess ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-              }`}
-            >
-              {copySuccess ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-              <span className="hidden sm:inline">Copy for Sheets</span>
-            </button>
+          <div>
+            <h1 className="font-black text-lg uppercase tracking-tighter leading-none">Voices South</h1>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Treasury Portal</p>
           </div>
+        </div>
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 rounded-full border border-emerald-100">
+          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+          <span className="text-[10px] font-black text-emerald-600 uppercase">Live</span>
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto p-4 md:p-8">
-        {view === 'dashboard' && (
-          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {/* Quick Actions */}
-            <section>
-              <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">Quick Punch</h2>
-              <div className="grid grid-cols-2 gap-4">
-                <button 
-                  onClick={() => handleAddLog('PUNCH IN')}
-                  disabled={isSubmitting}
-                  className="group relative bg-white border-2 border-slate-100 p-6 rounded-2xl shadow-sm hover:shadow-md hover:border-blue-200 transition-all text-center active:scale-95 overflow-hidden"
-                >
-                  <div className="relative z-10">
-                    <div className="bg-blue-50 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3 group-hover:bg-blue-600 transition-colors">
-                      <PlusCircle className="w-6 h-6 text-blue-600 group-hover:text-white" />
-                    </div>
-                    <span className="block font-bold text-slate-800">Punch In</span>
-                  </div>
-                </button>
+      <main className="max-w-4xl mx-auto p-4 md:p-8 space-y-6">
+        {/* Date Selector */}
+        <section className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-slate-200 text-center relative overflow-hidden">
+          <div className="relative z-10 flex items-center justify-center gap-8">
+            <button onClick={() => changeWeek(-1)} className="p-3 bg-slate-50 rounded-full hover:bg-slate-100 transition-colors">
+              <ChevronLeft className="w-6 h-6 text-slate-400"/>
+            </button>
+            <div>
+              <div className="flex items-center justify-center gap-2 text-indigo-600 mb-1">
+                <CalendarDays className="w-3 h-3" />
+                <span className="text-[10px] font-black uppercase tracking-[0.2em]">Reporting Period</span>
+              </div>
+              <p className="text-4xl font-black text-slate-800 tracking-tighter">{dateKey}</p>
+            </div>
+            <button onClick={() => changeWeek(1)} className="p-3 bg-slate-50 rounded-full hover:bg-slate-100 transition-colors">
+              <ChevronRight className="w-6 h-6 text-slate-400"/>
+            </button>
+          </div>
+        </section>
 
-                <button 
-                  onClick={() => handleAddLog('PUNCH OUT')}
-                  disabled={isSubmitting}
-                  className="group relative bg-white border-2 border-slate-100 p-6 rounded-2xl shadow-sm hover:shadow-md hover:border-orange-200 transition-all text-center active:scale-95 overflow-hidden"
-                >
-                  <div className="relative z-10">
-                    <div className="bg-orange-50 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3 group-hover:bg-orange-600 transition-colors">
-                      <LogOut className="w-6 h-6 text-orange-600 group-hover:text-white" />
-                    </div>
-                    <span className="block font-bold text-slate-800">Punch Out</span>
+        <div className="grid md:grid-cols-2 gap-6">
+          {/* Income Column */}
+          <section className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-slate-200">
+            <h2 className="text-[11px] font-black uppercase tracking-widest text-slate-400 mb-8 flex items-center gap-3">
+               <TrendingUp className="w-4 h-4 text-emerald-500" /> Weekly Income
+            </h2>
+            <div className="space-y-6">
+              {Object.keys(income).map((key) => (
+                <div key={key} className="group flex items-center justify-between border-b border-slate-50 pb-2">
+                  <span className="text-[11px] font-bold uppercase text-slate-500 group-hover:text-indigo-600 transition-colors">{key}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-300 font-bold">$</span>
+                    <input
+                      type="number"
+                      disabled={isFinalized}
+                      value={income[key] || ''}
+                      onChange={(e) => handleIncomeChange(key, e.target.value)}
+                      className="w-28 text-right font-black text-xl text-slate-800 focus:outline-none bg-transparent disabled:opacity-50"
+                      placeholder="0.00"
+                    />
                   </div>
-                </button>
+                </div>
+              ))}
+            </div>
+            <div className="mt-10 pt-6 border-t border-dashed border-slate-200 flex justify-between items-end">
+                <p className="text-[10px] font-black text-slate-400 uppercase">Gross Revenue</p>
+                <p className="text-2xl font-black text-emerald-600">${totalIncome.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
+            </div>
+          </section>
+
+          {/* Expenses Column */}
+          <div className="space-y-6">
+            <section className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-slate-200">
+              <h2 className="text-[11px] font-black uppercase tracking-widest text-slate-400 mb-8 flex items-center gap-3">
+                 <Plus className="w-4 h-4 text-rose-500" /> Record Expense
+              </h2>
+              <div className="space-y-4">
+                <select 
+                  disabled={isFinalized}
+                  value={newExpense.category}
+                  onChange={(e) => setNewExpense({...newExpense, category: e.target.value})}
+                  className="w-full bg-slate-50 p-4 rounded-2xl font-bold text-sm outline-none border border-slate-100 focus:ring-2 ring-indigo-500/10 appearance-none disabled:opacity-50"
+                >
+                  {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <div className="flex gap-3">
+                  <div className="relative flex-1">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 font-bold">$</span>
+                    <input
+                      type="number"
+                      disabled={isFinalized}
+                      value={newExpense.amount}
+                      onChange={(e) => setNewExpense({...newExpense, amount: e.target.value})}
+                      placeholder="0.00"
+                      className="w-full bg-slate-50 pl-10 pr-4 py-4 rounded-2xl font-black text-lg outline-none border border-slate-100 focus:ring-2 ring-indigo-500/10 disabled:opacity-50"
+                    />
+                  </div>
+                  <button 
+                    onClick={addExpense} 
+                    disabled={isFinalized}
+                    className="bg-slate-900 text-white p-4 rounded-2xl px-8 hover:bg-black transition-all active:scale-95 disabled:bg-slate-200"
+                  >
+                    <Plus className="w-6 h-6" />
+                  </button>
+                </div>
               </div>
             </section>
 
-            {/* Recent Activity */}
-            <section>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Recent Activity</h2>
-                <button onClick={() => setView('history')} className="text-sm font-medium text-blue-600 hover:underline">View All</button>
+            <section className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-slate-200">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-[11px] font-black uppercase tracking-widest text-slate-400">Activity Log</h3>
+                <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md">{expenses.length} Entries</span>
               </div>
-              <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-                {logs.length === 0 ? (
-                  <div className="p-12 text-center text-slate-400">
-                    <History className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                    <p>No activity recorded yet</p>
+              <div className="space-y-3 max-h-[350px] overflow-y-auto pr-2 custom-scrollbar">
+                {expenses.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Wallet className="w-8 h-8 text-slate-100 mx-auto mb-2" />
+                    <p className="text-slate-300 text-[10px] font-bold uppercase tracking-widest">No expenses recorded</p>
                   </div>
                 ) : (
-                  <div className="divide-y divide-slate-100">
-                    {logs.slice(0, 5).map((log) => (
-                      <div key={log.id} className="p-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
-                        <div className="flex items-center gap-3">
-                          <div className={`w-2 h-2 rounded-full ${log.type === 'PUNCH IN' ? 'bg-blue-500' : 'bg-orange-500'}`} />
-                          <div>
-                            <p className="font-semibold text-slate-800 text-sm">{log.type}</p>
-                            <p className="text-xs text-slate-500">
-                              {log.timestamp.toLocaleDateString([], { month: 'short', day: 'numeric' })} • {log.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </p>
-                          </div>
-                        </div>
-                        <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-mono">
-                          {log.userId.slice(-4)}
-                        </span>
+                  expenses.map(exp => (
+                    <div key={exp.id} className="group flex items-center justify-between p-4 bg-slate-50 rounded-2xl hover:bg-white border border-transparent hover:border-slate-100 transition-all">
+                      <div className="flex-1">
+                        <p className="text-[10px] font-black text-slate-800 leading-none uppercase tracking-tight">{exp.category}</p>
+                        <p className="text-[8px] text-slate-400 font-bold mt-1.5 uppercase">
+                          {new Date(exp.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                        </p>
                       </div>
-                    ))}
-                  </div>
+                      <div className="flex items-center gap-4">
+                        <p className="font-black text-rose-600 text-sm">-${Number(exp.amount).toFixed(2)}</p>
+                        {!isFinalized && (
+                          <button onClick={() => deleteExpense(exp.id)} className="text-slate-200 hover:text-rose-500 transition-colors">
+                             <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))
                 )}
+              </div>
+              <div className="mt-6 pt-4 border-t border-slate-100 flex justify-between items-center">
+                <span className="text-[10px] font-black text-slate-400 uppercase">Total Expenses</span>
+                <span className="text-lg font-black text-rose-600">-${totalExpenses.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
               </div>
             </section>
           </div>
-        )}
-
-        {view === 'history' && (
-          <div className="animate-in fade-in slide-in-from-right-4 duration-300">
-            <button 
-              onClick={() => setView('dashboard')}
-              className="flex items-center gap-2 text-slate-500 mb-6 hover:text-slate-800"
-            >
-              <ChevronLeft className="w-5 h-5" />
-              Back to Dashboard
-            </button>
-            <h2 className="text-2xl font-bold mb-6 text-slate-800">Full History</h2>
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200">
-                    <th className="p-4 text-xs font-semibold text-slate-500 uppercase">Time</th>
-                    <th className="p-4 text-xs font-semibold text-slate-500 uppercase">Action</th>
-                    <th className="p-4 text-xs font-semibold text-slate-500 uppercase">User</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {logs.map((log) => (
-                    <tr key={log.id} className="hover:bg-slate-50">
-                      <td className="p-4">
-                        <div className="text-sm font-medium text-slate-800">
-                          {log.timestamp.toLocaleDateString()}
-                        </div>
-                        <div className="text-xs text-slate-500">
-                          {log.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <span className={`px-2 py-1 rounded-md text-[10px] font-bold ${
-                          log.type === 'PUNCH IN' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'
-                        }`}>
-                          {log.type}
-                        </span>
-                      </td>
-                      <td className="p-4 text-sm text-slate-500 font-mono">
-                        {log.userId.slice(-6)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
+        </div>
       </main>
 
-      {/* Mobile Navigation Bar */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 md:hidden flex justify-around p-2 pb-6">
-        <button 
-          onClick={() => setView('dashboard')}
-          className={`flex flex-col items-center p-2 rounded-xl transition-colors ${view === 'dashboard' ? 'text-blue-600' : 'text-slate-400'}`}
-        >
-          <LayoutDashboard className="w-6 h-6" />
-          <span className="text-[10px] mt-1 font-medium">Home</span>
-        </button>
-        <button 
-          onClick={() => setView('history')}
-          className={`flex flex-col items-center p-2 rounded-xl transition-colors ${view === 'history' ? 'text-blue-600' : 'text-slate-400'}`}
-        >
-          <History className="w-6 h-6" />
-          <span className="text-[10px] mt-1 font-medium">History</span>
-        </button>
-      </nav>
+      {/* Floating Summary & Action */}
+      <div className="fixed bottom-8 left-1/2 -translate-x-1/2 w-[95%] max-w-xl z-30">
+        <div className="bg-white rounded-[3rem] p-4 shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-slate-100 flex flex-col sm:flex-row items-center gap-4">
+          <div className="flex-1 bg-slate-900 rounded-[2.5rem] p-6 text-white flex items-center justify-between w-full">
+            <div>
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Weekly Net Flow</p>
+              <p className={`text-3xl font-black ${netSum >= 0 ? 'text-emerald-400' : 'text-rose-400'} tracking-tighter`}>
+                ${netSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </p>
+            </div>
+            <div className="text-right hidden sm:block">
+              <p className="text-[9px] font-bold text-slate-500 uppercase">In: ${totalIncome.toLocaleString()}</p>
+              <p className="text-[9px] font-bold text-slate-500 uppercase">Out: ${totalExpenses.toLocaleString()}</p>
+            </div>
+          </div>
+          
+          <button 
+            onClick={toggleFinalize}
+            className={`w-full sm:w-auto px-8 py-6 rounded-[2.5rem] font-black text-[11px] uppercase tracking-widest transition-all shadow-xl active:scale-95 flex items-center justify-center gap-2 whitespace-nowrap ${
+              isFinalized 
+              ? 'bg-rose-50 text-rose-600 border border-rose-100 hover:bg-rose-100' 
+              : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200'
+            }`}
+          >
+            {isFinalized ? (
+              <><Lock className="w-4 h-4" /> Unlock Week</>
+            ) : (
+              'Finalize Week'
+            )}
+          </button>
+        </div>
+      </div>
+
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #E2E8F0; border-radius: 10px; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+      `}</style>
     </div>
   );
 }

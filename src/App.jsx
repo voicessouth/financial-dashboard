@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { initializeApp, getApps, deleteApp } from 'firebase/app';
+import React, { useState, useEffect, useMemo } from 'react';
+import { initializeApp, getApps } from 'firebase/app';
 import { 
   getAuth, 
   signInAnonymously, 
@@ -32,15 +32,14 @@ import {
 } from 'lucide-react';
 
 export default function App() {
-  // --- Initialization State ---
+  // Initialization State
   const [db, setDb] = useState(null);
-  const [auth, setAuth] = useState(null);
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [statusMsg, setStatusMsg] = useState("Initializing System...");
-  
-  // --- App Logic State ---
+  const [status, setStatus] = useState("System Boot...");
+
+  // Ledger State
   const [activeDate, setActiveDate] = useState(() => new Date(2026, 0, 2));
   const [isFinalized, setIsFinalized] = useState(false);
   const [income, setIncome] = useState({
@@ -55,62 +54,6 @@ export default function App() {
     'MAINTENANCE', 'SUPPLIES', 'MINISTRY', 'TRAVEL', 'OTHER'
   ];
 
-  // --- Step 1: Bootstrap Firebase Safely ---
-  useEffect(() => {
-    const bootstrap = async () => {
-      try {
-        setStatusMsg("Detecting environment...");
-        
-        // 1. Check for config
-        if (typeof __firebase_config === 'undefined') {
-          throw new Error("Environment variable '__firebase_config' is missing. Ensure you are running this in the correct portal.");
-        }
-
-        const config = JSON.parse(__firebase_config);
-        
-        // 2. Clear existing apps to prevent "Duplicate App" errors
-        if (getApps().length > 0) {
-          await Promise.all(getApps().map(app => deleteApp(app)));
-        }
-
-        // 3. Initialize
-        setStatusMsg("Connecting to Treasury Cloud...");
-        const app = initializeApp(config);
-        const _auth = getAuth(app);
-        const _db = getFirestore(app);
-        
-        setAuth(_auth);
-        setDb(_db);
-
-        // 4. Handle Authentication
-        setStatusMsg("Authenticating session...");
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(_auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(_auth);
-        }
-
-        // 5. Setup Auth Listener
-        const unsubscribe = onAuthStateChanged(_auth, (u) => {
-          if (u) {
-            setUser(u);
-            setStatusMsg("Syncing Ledger...");
-            setLoading(false);
-          }
-        });
-
-        return unsubscribe;
-      } catch (err) {
-        console.error("Bootstrap Error:", err);
-        setError(err.message);
-        setLoading(false);
-      }
-    };
-
-    bootstrap();
-  }, []);
-
-  // --- Step 2: Sync Data ---
   const dateKey = useMemo(() => {
     const d = new Date(activeDate);
     return `${d.getMonth() + 1}-${d.getDate()}-${d.getFullYear()}`;
@@ -118,10 +61,78 @@ export default function App() {
 
   const appId = typeof __app_id !== 'undefined' ? __app_id : 'voices-south-portal';
 
+  // --- SAFE INITIALIZATION EFFECT ---
+  useEffect(() => {
+    let isMounted = true;
+
+    const init = async () => {
+      try {
+        setStatus("Checking Environment...");
+        if (typeof __firebase_config === 'undefined') {
+          throw new Error("Configuration not found. Please check your environment variables.");
+        }
+
+        const config = JSON.parse(__firebase_config);
+        
+        // Singleton Initialization
+        let app;
+        if (!getApps().length) {
+          app = initializeApp(config);
+        } else {
+          app = getApps()[0];
+        }
+
+        const _auth = getAuth(app);
+        const _db = getFirestore(app);
+
+        if (isMounted) {
+          setDb(_db);
+          setStatus("Authenticating Secure Node...");
+        }
+
+        // Auth
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(_auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(_auth);
+        }
+
+        onAuthStateChanged(_auth, (u) => {
+          if (u && isMounted) {
+            setUser(u);
+            setLoading(false);
+          }
+        });
+
+      } catch (err) {
+        console.error("Init Error:", err);
+        if (isMounted) {
+          setError(err.message);
+          setLoading(false);
+        }
+      }
+    };
+
+    init();
+    
+    // Safety Timeout: If nothing happens in 5s, try to show the app anyway
+    const timer = setTimeout(() => {
+      if (loading && isMounted) {
+        setLoading(false);
+        setStatus("Manual Override Active");
+      }
+    }, 5000);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
+  }, []);
+
+  // --- DATA SYNC EFFECT ---
   useEffect(() => {
     if (!user || !db) return;
 
-    // RULE 1 Paths
     const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'finance_reports', dateKey);
     const expCol = collection(db, 'artifacts', appId, 'public', 'data', 'finance_reports', dateKey, 'expenses');
 
@@ -134,13 +145,13 @@ export default function App() {
         setIncome({ cash: 0, credit: 0, text: 0, givelify: 0, tithely: 0, cashapp: 0, zelle: 0, website: 0 });
         setIsFinalized(false);
       }
-    }, (err) => console.error("Snapshot Error:", err));
+    }, (e) => console.log("Report error:", e));
 
     const unsubExp = onSnapshot(expCol, (snap) => {
       const items = [];
       snap.forEach(d => items.push({ id: d.id, ...d.data() }));
       setExpenses(items.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)));
-    }, (err) => console.error("Exp Snapshot Error:", err));
+    }, (e) => console.log("Expense error:", e));
 
     return () => {
       unsubDoc();
@@ -148,10 +159,11 @@ export default function App() {
     };
   }, [user, db, dateKey, appId]);
 
-  // --- Actions ---
+  // Actions
   const handleIncomeChange = async (key, val) => {
     if (isFinalized || !user || !db) return;
-    const newIncome = { ...income, [key]: parseFloat(val) || 0 };
+    const valNum = parseFloat(val) || 0;
+    const newIncome = { ...income, [key]: valNum };
     setIncome(newIncome);
     await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'finance_reports', dateKey), {
       income: newIncome,
@@ -173,190 +185,211 @@ export default function App() {
   const totalIncome = Object.values(income).reduce((a, b) => a + (Number(b) || 0), 0);
   const totalExpenses = expenses.reduce((a, b) => a + (Number(b.amount) || 0), 0);
 
-  // --- UI Layouts ---
-  if (loading || error) {
+  if (loading && !error) {
     return (
-      <div className="min-h-screen bg-[#020617] flex flex-col items-center justify-center p-6">
-        <div className="w-full max-w-md bg-white/5 border border-white/10 p-10 rounded-[3rem] backdrop-blur-xl text-center">
-          {error ? (
-            <>
-              <AlertCircle className="w-16 h-16 text-rose-500 mx-auto mb-6" />
-              <h2 className="text-white text-2xl font-black uppercase mb-2">Startup Failed</h2>
-              <p className="text-slate-400 text-xs font-mono bg-black/40 p-4 rounded-2xl mb-6">{error}</p>
-              <button onClick={() => window.location.reload()} className="w-full bg-white text-black py-4 rounded-full font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2">
-                <RefreshCw className="w-4 h-4" /> Retry Connection
-              </button>
-            </>
-          ) : (
-            <>
-              <div className="relative w-20 h-20 mx-auto mb-8">
-                <Database className="w-full h-full text-blue-500 animate-pulse" />
-                <div className="absolute inset-0 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div>
-              </div>
-              <p className="text-white font-black text-xs uppercase tracking-[0.3em]">{statusMsg}</p>
-              <div className="mt-8 flex justify-center gap-1">
-                {[1,2,3].map(i => <div key={i} className="w-1 h-1 rounded-full bg-blue-500 animate-bounce" style={{animationDelay: `${i*0.1}s`}}></div>)}
-              </div>
-            </>
-          )}
+      <div className="min-h-screen bg-[#020617] flex flex-col items-center justify-center p-6 text-center">
+        <div className="relative w-24 h-24 mb-8">
+          <Database className="w-full h-full text-blue-500 animate-pulse" />
+          <div className="absolute inset-0 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div>
+        </div>
+        <h2 className="text-white font-black uppercase tracking-[0.4em] text-xs mb-2">{status}</h2>
+        <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Voices South Treasury v2.1</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-[#020617] flex flex-col items-center justify-center p-8">
+        <div className="max-w-md w-full bg-white/5 border border-white/10 p-10 rounded-[3rem] backdrop-blur-md text-center">
+          <AlertCircle className="w-16 h-16 text-rose-500 mx-auto mb-6" />
+          <h2 className="text-white text-2xl font-black uppercase mb-4 tracking-tighter">Connection Failed</h2>
+          <div className="bg-black/50 p-4 rounded-2xl text-rose-300 font-mono text-xs mb-8 text-left overflow-auto max-h-32">
+            {error}
+          </div>
+          <button onClick={() => window.location.reload()} className="w-full bg-white text-black py-4 rounded-full font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 active:scale-95 transition-all">
+            <RefreshCw className="w-4 h-4" /> Restart Portal
+          </button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] pb-44">
-      <header className="bg-white border-b border-slate-200 px-6 py-5 sticky top-0 z-50 flex justify-between items-center">
+    <div className="min-h-screen bg-[#F8FAFC] pb-44 font-sans text-slate-900">
+      <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 px-6 py-4 sticky top-0 z-50 flex justify-between items-center">
         <div className="flex items-center gap-4">
-          <div className="bg-slate-900 p-2.5 rounded-2xl shadow-lg">
+          <div className="bg-slate-900 p-2.5 rounded-2xl shadow-xl">
             <ShieldCheck className="text-emerald-400 w-6 h-6" />
           </div>
           <div>
-            <h1 className="font-black text-xl uppercase tracking-tighter">Treasury Portal</h1>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Voices South Main Campus</p>
+            <h1 className="font-black text-xl uppercase tracking-tighter leading-none">Treasury Portal</h1>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Voices South Main Campus</p>
           </div>
         </div>
-        <div className="hidden sm:flex items-center gap-2 bg-slate-50 px-4 py-2 rounded-full border border-slate-100">
-          <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-          <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Secure Node Connected</span>
+        <div className="hidden md:flex items-center gap-2 bg-emerald-50 px-4 py-2 rounded-full border border-emerald-100">
+          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+          <span className="text-[9px] font-black uppercase tracking-widest text-emerald-700">Encrypted Cloud Sync</span>
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto p-6 space-y-8 mt-4">
-        {/* Date Selector */}
-        <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-200 flex items-center justify-between">
+      <main className="max-w-4xl mx-auto p-6 space-y-6 mt-4">
+        {/* Cycle Control */}
+        <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-200 flex items-center justify-between">
           <button onClick={() => {
             const d = new Date(activeDate);
             d.setDate(d.getDate() - 7);
             setActiveDate(d);
-          }} className="p-4 rounded-2xl bg-slate-50 hover:bg-slate-100 transition-all active:scale-95 text-slate-400">
+          }} className="p-3 rounded-xl bg-slate-50 hover:bg-slate-100 transition-all text-slate-400 active:scale-90">
             <ChevronLeft />
           </button>
           <div className="text-center">
-            <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-1 block">Selected Cycle</span>
-            <h2 className="text-3xl font-black text-slate-800 tracking-tighter">{dateKey}</h2>
+            <span className="text-[9px] font-black text-blue-600 uppercase tracking-[0.2em] mb-1 block">Accounting Cycle</span>
+            <h2 className="text-2xl font-black text-slate-800 tracking-tighter">{dateKey}</h2>
           </div>
           <button onClick={() => {
             const d = new Date(activeDate);
             d.setDate(d.getDate() + 7);
             setActiveDate(d);
-          }} className="p-4 rounded-2xl bg-slate-50 hover:bg-slate-100 transition-all active:scale-95 text-slate-400">
+          }} className="p-3 rounded-xl bg-slate-50 hover:bg-slate-100 transition-all text-slate-400 active:scale-90">
             <ChevronRight />
           </button>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-8">
-          {/* Revenue Section */}
-          <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-200">
-            <h3 className="text-[11px] font-black uppercase tracking-widest text-slate-400 mb-8 flex items-center gap-3">
-              <TrendingUp className="w-4 h-4 text-emerald-500" /> Revenue Stream
-            </h3>
-            <div className="space-y-5">
+        <div className="grid md:grid-cols-2 gap-6">
+          {/* Revenue Stream */}
+          <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-200">
+            <div className="flex items-center justify-between mb-8">
+              <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-emerald-500" /> Revenue Stream
+              </h3>
+              {isFinalized && <Lock className="w-4 h-4 text-slate-300" />}
+            </div>
+            
+            <div className="space-y-4">
               {Object.keys(income).map(key => (
-                <div key={key} className="flex items-center justify-between border-b border-slate-50 pb-4">
-                  <span className="text-[10px] font-bold uppercase text-slate-400">{key}</span>
+                <div key={key} className="flex items-center justify-between border-b border-slate-50 pb-3">
+                  <span className="text-[10px] font-bold uppercase text-slate-500">{key}</span>
                   <div className="flex items-center gap-2">
-                    <span className="text-slate-300 font-black">$</span>
+                    <span className="text-slate-300 font-black text-sm">$</span>
                     <input 
                       type="number"
                       disabled={isFinalized}
                       value={income[key] || ''}
                       onChange={(e) => handleIncomeChange(key, e.target.value)}
                       placeholder="0.00"
-                      className="w-24 text-right font-black text-xl text-slate-800 bg-transparent outline-none focus:text-blue-600 disabled:opacity-30"
+                      className="w-24 text-right font-black text-lg text-slate-800 bg-transparent outline-none focus:text-blue-600 disabled:opacity-30"
                     />
                   </div>
                 </div>
               ))}
-              <div className="pt-8 flex justify-between items-center border-t-2 border-dashed border-slate-100">
-                <span className="text-[10px] font-black uppercase text-slate-400">Gross Total</span>
-                <span className="text-3xl font-black text-emerald-600 tracking-tighter">${totalIncome.toFixed(2)}</span>
+              <div className="pt-6 mt-4 flex justify-between items-center border-t-2 border-dashed border-slate-100">
+                <span className="text-[10px] font-black uppercase text-slate-400">Total Income</span>
+                <span className="text-3xl font-black text-emerald-600 tracking-tighter">${totalIncome.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
               </div>
             </div>
           </div>
 
-          {/* Expenses Section */}
-          <div className="space-y-8">
-            <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-200">
-              <h3 className="text-[11px] font-black uppercase tracking-widest text-slate-400 mb-6">Debit Entry</h3>
-              <div className="flex gap-3">
+          {/* Expenses & Ledger */}
+          <div className="space-y-6">
+            <div className="bg-slate-900 p-6 rounded-[2.5rem] shadow-xl text-white">
+              <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-6">Debit Entry</h3>
+              <div className="flex flex-col gap-3">
                 <select 
                   value={newExpense.category}
+                  disabled={isFinalized}
                   onChange={e => setNewExpense({...newExpense, category: e.target.value})}
-                  className="flex-1 bg-slate-50 p-4 rounded-2xl font-bold text-sm outline-none border border-slate-100"
+                  className="bg-white/10 p-4 rounded-2xl font-bold text-xs uppercase tracking-widest outline-none border border-white/5 focus:border-blue-500 transition-colors"
                 >
-                  {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                  {categories.map(c => <option key={c} value={c} className="bg-slate-900">{c}</option>)}
                 </select>
-                <input 
-                  type="number"
-                  value={newExpense.amount}
-                  onChange={e => setNewExpense({...newExpense, amount: e.target.value})}
-                  placeholder="0.00"
-                  className="w-28 bg-slate-50 p-4 rounded-2xl font-black text-lg outline-none border border-slate-100"
-                />
-                <button 
-                  onClick={addExpense}
-                  disabled={!newExpense.amount || isFinalized}
-                  className="bg-slate-900 text-white p-4 rounded-2xl px-6 hover:bg-blue-600 transition-all active:scale-90 disabled:opacity-20"
-                >
-                  <Plus />
-                </button>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30 font-black">$</span>
+                    <input 
+                      type="number"
+                      disabled={isFinalized}
+                      value={newExpense.amount}
+                      onChange={e => setNewExpense({...newExpense, amount: e.target.value})}
+                      placeholder="0.00"
+                      className="w-full bg-white/10 p-4 pl-8 rounded-2xl font-black text-xl outline-none border border-white/5 focus:border-blue-500 disabled:opacity-20"
+                    />
+                  </div>
+                  <button 
+                    onClick={addExpense}
+                    disabled={!newExpense.amount || isFinalized}
+                    className="bg-blue-600 text-white p-4 rounded-2xl px-6 hover:bg-blue-500 transition-all active:scale-90 disabled:opacity-20 shadow-lg shadow-blue-900/40"
+                  >
+                    <Plus />
+                  </button>
+                </div>
               </div>
             </div>
 
-            <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-200">
-              <h3 className="text-[11px] font-black uppercase tracking-widest text-slate-400 mb-6">Activity Log</h3>
-              <div className="space-y-3 max-h-64 overflow-y-auto pr-2 custom-scrollbar">
+            <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-200">
+              <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-6">Activity Log</h3>
+              <div className="space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
+                {expenses.length === 0 && (
+                  <div className="py-10 text-center border-2 border-dashed border-slate-50 rounded-2xl">
+                    <p className="text-[10px] font-black uppercase text-slate-300">No Transactions Found</p>
+                  </div>
+                )}
                 {expenses.map(exp => (
-                  <div key={exp.id} className="flex justify-between items-center bg-slate-50 p-4 rounded-2xl">
+                  <div key={exp.id} className="flex justify-between items-center bg-slate-50 p-4 rounded-2xl border border-slate-100/50">
                     <div>
                       <p className="text-[10px] font-black uppercase text-slate-800">{exp.category}</p>
-                      <p className="text-[8px] font-bold text-slate-400 uppercase">{new Date(exp.timestamp).toLocaleTimeString()}</p>
+                      <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">
+                        {new Date(exp.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </p>
                     </div>
-                    <div className="flex items-center gap-4">
-                      <span className="font-black text-rose-500">-${exp.amount.toFixed(2)}</span>
+                    <div className="flex items-center gap-3">
+                      <span className="font-black text-rose-500 text-sm">-${exp.amount.toFixed(2)}</span>
                       {!isFinalized && (
                         <button onClick={async () => {
                           await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'finance_reports', dateKey, 'expenses', exp.id));
-                        }} className="text-slate-200 hover:text-rose-500"><Trash2 className="w-4 h-4" /></button>
+                        }} className="text-slate-300 hover:text-rose-500 transition-colors p-1"><Trash2 className="w-3.5 h-3.5" /></button>
                       )}
                     </div>
                   </div>
                 ))}
               </div>
-              <div className="pt-6 mt-6 border-t border-slate-100 flex justify-between items-center">
-                <span className="text-[10px] font-black uppercase text-slate-400">Total Debits</span>
-                <span className="text-2xl font-black text-rose-500">-${totalExpenses.toFixed(2)}</span>
+              <div className="pt-6 mt-4 border-t border-slate-100 flex justify-between items-center">
+                <span className="text-[10px] font-black uppercase text-slate-400">Total Expenses</span>
+                <span className="text-2xl font-black text-rose-500 tracking-tighter">-${totalExpenses.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
               </div>
             </div>
           </div>
         </div>
       </main>
 
-      <div className="fixed bottom-10 left-1/2 -translate-x-1/2 w-[90%] max-w-xl">
-        <div className="bg-slate-900 rounded-[3rem] p-4 flex items-center gap-4 shadow-2xl shadow-blue-900/40 border border-slate-800">
-          <div className="flex-1 px-8">
-            <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Net Flow</p>
-            <p className={`text-3xl font-black tracking-tighter ${totalIncome - totalExpenses >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-              ${(totalIncome - totalExpenses).toFixed(2)}
+      {/* Floating Action Bar */}
+      <div className="fixed bottom-10 left-1/2 -translate-x-1/2 w-[95%] max-w-lg z-[100]">
+        <div className="bg-white rounded-[2.5rem] p-3 flex items-center gap-4 shadow-2xl border border-slate-200">
+          <div className="flex-1 px-6">
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Net Position</p>
+            <p className={`text-2xl font-black tracking-tighter ${totalIncome - totalExpenses >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+              ${(totalIncome - totalExpenses).toLocaleString(undefined, {minimumFractionDigits: 2})}
             </p>
           </div>
           <button 
             onClick={async () => {
+              if (!db || !user) return;
               await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'finance_reports', dateKey), { 
                 status: isFinalized ? 'draft' : 'finalized' 
               }, { merge: true });
             }}
-            className={`px-10 py-6 rounded-[2.5rem] font-black text-[10px] uppercase tracking-widest transition-all ${isFinalized ? 'bg-rose-500 text-white' : 'bg-blue-600 text-white hover:bg-blue-500'}`}
+            className={`px-8 py-5 rounded-[2rem] font-black text-[10px] uppercase tracking-widest transition-all shadow-lg ${isFinalized ? 'bg-rose-500 text-white shadow-rose-200' : 'bg-slate-900 text-white hover:bg-blue-600'}`}
           >
-            {isFinalized ? 'Unlock Period' : 'Finalize Weekly'}
+            {isFinalized ? 'Unlock Audit' : 'Finalize Ledger'}
           </button>
         </div>
       </div>
 
       <style>{`
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar { width: 3px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #E2E8F0; border-radius: 10px; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
         body { font-family: 'Inter', sans-serif; }
       `}</style>
     </div>

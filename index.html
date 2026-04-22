@@ -5,37 +5,81 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Voices South Financial Portal</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
     
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js";
-        import { getFirestore, doc, setDoc, onSnapshot, collection, deleteDoc, query } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, deleteDoc, query } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
 
-        // Global Firebase Configuration
+        // Configuration
         const firebaseConfig = JSON.parse(__firebase_config);
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
         const auth = getAuth(app);
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
-        // Internal State
+        // App State
         let currentIncome = {};
         let expenses = [];
+        let activeWeekKey = '';
+        let unsubscribeIncome = null;
+        let unsubscribeExpenses = null;
+
         const incomeCats = ['Cash/Checks', 'Credit Card', 'Text', 'Givelify', 'Tithely', 'CashApp', 'Zelle', 'Website Giving'];
         const expenseCats = ['Lady Val Payroll', 'Mortgage - Kirkland Group', 'Georgia Power', 'Georgia Natural Gas', 'Spectrum', 'Water Authority', 'Pest Control', 'Payroll Taxes', 'Band Payroll', 'Love Offerings', 'Ministry Design', 'Other'];
 
-        // Weekly date bucket logic
-        const getWeekKey = (date) => {
-            const d = new Date(date);
-            const day = d.getDay();
-            const diff = d.getDate() - day + (day === 0 ? -6 : 1); 
-            const monday = new Date(d.setDate(diff));
-            return `${monday.getMonth() + 1}-${monday.getDate()}-${monday.getFullYear()}`;
-        };
-        const dateKey = getWeekKey(new Date());
+        // Core Date Logic: Fixed Start Jan 2, 2026
+        const START_DATE = new Date('2026-01-02T00:00:00');
+        
+        function generateWeekOptions() {
+            const select = document.getElementById('weekSelector');
+            const now = new Date();
+            const weeks = [];
+            
+            let current = new Date(START_DATE);
+            while (current <= now || weeks.length < 1) {
+                const key = `${current.getMonth() + 1}-${current.getDate()}-${current.getFullYear()}`;
+                weeks.unshift(key); // Newest first
+                current.setDate(current.getDate() + 7);
+            }
 
-        // UI Helpers
+            weeks.forEach(key => {
+                const opt = document.createElement('option');
+                opt.value = key;
+                opt.innerText = `Week of ${key}`;
+                select.appendChild(opt);
+            });
+            activeWeekKey = weeks[0];
+        }
+
+        async function init() {
+            generateWeekOptions();
+            renderStaticUI();
+            
+            updateStatus("Establishing Secure Link...", "bg-amber-400 animate-pulse");
+
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        updateStatus("Cloud Sync Active", "bg-emerald-500");
+                        loadWeekData(activeWeekKey);
+                    } else {
+                        updateStatus("Access Denied", "bg-rose-500");
+                    }
+                });
+            } catch (err) {
+                console.error("Auth Error:", err);
+                updateStatus("Offline Mode", "bg-slate-400");
+            }
+        }
+
         function updateStatus(text, colorClass) {
             const dot = document.getElementById('statusDot');
             const label = document.getElementById('statusText');
@@ -45,91 +89,93 @@
             }
         }
 
-        async function init() {
-            // Render basic UI immediately so the user doesn't see a blank screen
-            renderIncomeFields();
-            renderExpenseOptions();
-            document.getElementById('dateDisplay').innerText = dateKey;
+        async function loadWeekData(weekKey) {
+            if (unsubscribeIncome) unsubscribeIncome();
+            if (unsubscribeExpenses) unsubscribeExpenses();
 
-            try {
-                updateStatus("Connecting to Vault...", "bg-amber-500 animate-pulse");
+            activeWeekKey = weekKey;
+            
+            // Check if current week exists, if not, try to carry over from previous
+            const incomeDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'income_summaries', weekKey);
+            const snap = await getDoc(incomeDocRef);
+            
+            if (!snap.exists()) {
+                await attemptCarryover(weekKey);
+            }
+
+            // Real-time listener for Income
+            unsubscribeIncome = onSnapshot(incomeDocRef, (docSnap) => {
+                currentIncome = docSnap.exists() ? docSnap.data().income : {};
+                syncIncomeInputs();
+                calculateTotals();
+            });
+
+            // Real-time listener for Expenses
+            const expensesColRef = collection(db, 'artifacts', appId, 'public', 'data', `expenses_${weekKey}`);
+            unsubscribeExpenses = onSnapshot(expensesColRef, (colSnap) => {
+                expenses = colSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+                renderExpenseList();
+                calculateTotals();
+            });
+        }
+
+        async function attemptCarryover(newWeekKey) {
+            // Find the previous week key in the selector list
+            const select = document.getElementById('weekSelector');
+            const options = Array.from(select.options).map(o => o.value);
+            const currentIndex = options.indexOf(newWeekKey);
+            
+            if (currentIndex < options.length - 1) {
+                const prevWeekKey = options[currentIndex + 1];
+                const prevDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'income_summaries', prevWeekKey);
+                const prevSnap = await getDoc(prevDocRef);
                 
-                // Auth handshake
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
+                if (prevSnap.exists()) {
+                    const prevData = prevSnap.data().income;
+                    const newDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'income_summaries', newWeekKey);
+                    await setDoc(newDocRef, { 
+                        income: prevData, 
+                        isCarryover: true,
+                        carriedFrom: prevWeekKey,
+                        lastUpdated: new Date().toISOString() 
+                    });
                 }
-
-                onAuthStateChanged(auth, (user) => {
-                    if (user) {
-                        updateStatus("Cloud Sync Online", "bg-emerald-500");
-                        setupListeners();
-                    } else {
-                        updateStatus("Access Revoked", "bg-rose-500");
-                    }
-                });
-            } catch (err) {
-                console.error("Init Error:", err);
-                updateStatus("Secure Link Failed", "bg-rose-500");
             }
         }
 
-        function setupListeners() {
-            if (!auth.currentUser) return;
-
-            // Income Stream
-            const incomeDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'income_summaries', dateKey);
-            onSnapshot(incomeDocRef, (snap) => {
-                if (snap.exists()) {
-                    currentIncome = snap.data().income || {};
-                    syncIncomeInputs();
-                }
-                refreshDashboard();
-            }, (err) => {
-                console.error("Income read error:", err);
-                updateStatus("Income Data Error", "bg-rose-500");
-            });
-
-            // Expense Stream
-            const expensesColRef = collection(db, 'artifacts', appId, 'public', 'data', `expenses_${dateKey}`);
-            onSnapshot(expensesColRef, (snap) => {
-                expenses = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-                renderExpenseList();
-                refreshDashboard();
-            }, (err) => {
-                console.error("Expense read error:", err);
-                updateStatus("Expense Data Error", "bg-rose-500");
-            });
-        }
-
-        function renderIncomeFields() {
-            const container = document.getElementById('incomeFields');
-            container.innerHTML = incomeCats.map(cat => `
-                <div class="flex justify-between items-center py-3 border-b border-slate-50 last:border-0">
+        function renderStaticUI() {
+            const incContainer = document.getElementById('incomeFields');
+            incContainer.innerHTML = incomeCats.map(cat => `
+                <div class="flex justify-between items-center py-4 border-b border-slate-50 last:border-0">
                     <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">${cat}</label>
-                    <div class="flex items-center gap-1 group">
-                        <span class="text-slate-300 font-bold text-sm">$</span>
-                        <input type="number" step="0.01" data-cat="${cat}" onchange="updateIncome('${cat}', this.value)" placeholder="0.00" 
-                        class="income-input w-28 text-right font-black text-slate-800 outline-none bg-transparent hover:bg-slate-50 focus:bg-slate-50 rounded-lg p-1 transition-all">
+                    <div class="flex items-center gap-2">
+                        <span class="text-slate-300 font-bold">$</span>
+                        <input type="number" step="0.01" data-cat="${cat}" onchange="handleIncomeChange('${cat}', this.value)" 
+                        placeholder="0.00" class="income-input w-32 text-right font-black text-slate-800 outline-none bg-slate-50 focus:bg-white focus:ring-2 ring-indigo-500/10 rounded-xl p-2 transition-all">
                     </div>
                 </div>
             `).join('');
-        }
 
-        function renderExpenseOptions() {
-            const select = document.getElementById('expenseCategory');
-            select.innerHTML = `<option value="" disabled selected>Select Category</option>` + 
+            const expSelect = document.getElementById('expenseCategory');
+            expSelect.innerHTML = `<option value="" disabled selected>Choose Category</option>` + 
                 expenseCats.map(cat => `<option value="${cat}">${cat}</option>`).join('');
         }
 
-        window.updateIncome = async (cat, val) => {
+        window.changeWeek = (val) => {
+            loadWeekData(val);
+        };
+
+        window.handleIncomeChange = async (cat, val) => {
             if (!auth.currentUser) return;
             const amount = parseFloat(val) || 0;
             currentIncome[cat] = amount;
             
-            const incomeDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'income_summaries', dateKey);
-            await setDoc(incomeDocRef, { income: currentIncome, lastUpdated: new Date().toISOString() }, { merge: true });
+            const incomeDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'income_summaries', activeWeekKey);
+            await setDoc(incomeDocRef, { 
+                income: currentIncome, 
+                lastUpdated: new Date().toISOString(),
+                isCarryover: false // Mark as manually updated once a change is made
+            }, { merge: true });
         };
 
         window.addExpense = async () => {
@@ -140,24 +186,21 @@
             if (!cat || amt <= 0 || !auth.currentUser) return;
 
             const id = Date.now().toString();
-            const expenseDocRef = doc(db, 'artifacts', appId, 'public', 'data', `expenses_${dateKey}`, id);
+            const expenseDocRef = doc(db, 'artifacts', appId, 'public', 'data', `expenses_${activeWeekKey}`, id);
             
-            try {
-                await setDoc(expenseDocRef, {
-                    category: cat,
-                    amount: amt,
-                    timestamp: new Date().toISOString()
-                });
-                amtInput.value = '';
-                document.getElementById('expenseCategory').value = '';
-            } catch (e) {
-                console.error("Add failed", e);
-            }
+            await setDoc(expenseDocRef, {
+                category: cat,
+                amount: amt,
+                timestamp: new Date().toISOString()
+            });
+            
+            amtInput.value = '';
+            document.getElementById('expenseCategory').value = '';
         };
 
         window.removeExpense = async (id) => {
             if (!auth.currentUser) return;
-            const docRef = doc(db, 'artifacts', appId, 'public', 'data', `expenses_${dateKey}`, id);
+            const docRef = doc(db, 'artifacts', appId, 'public', 'data', `expenses_${activeWeekKey}`, id);
             await deleteDoc(docRef);
         };
 
@@ -173,23 +216,18 @@
         function renderExpenseList() {
             const list = document.getElementById('expenseList');
             if (expenses.length === 0) {
-                list.innerHTML = `
-                    <div class="flex flex-col items-center justify-center py-12 text-slate-300 opacity-50">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mb-2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                        <p class="text-[10px] font-black uppercase tracking-widest">Secure Ledger Empty</p>
-                    </div>
-                `;
+                list.innerHTML = `<div class="py-12 text-center text-[10px] font-black text-slate-300 uppercase tracking-widest">No Disbursements Logged</div>`;
                 return;
             }
             list.innerHTML = expenses.map(exp => `
-                <div class="flex justify-between items-center p-4 bg-slate-50 border border-slate-100 rounded-2xl group animate-in fade-in slide-in-from-bottom-2">
+                <div class="flex justify-between items-center p-4 bg-white border border-slate-100 rounded-2xl shadow-sm">
                     <div>
                         <p class="text-[11px] font-black text-slate-800 uppercase leading-none mb-1">${exp.category}</p>
-                        <p class="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">${new Date(exp.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
+                        <p class="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">${new Date(exp.timestamp).toLocaleDateString()}</p>
                     </div>
                     <div class="flex items-center gap-4">
                         <span class="font-black text-rose-500 text-sm">-$${exp.amount.toFixed(2)}</span>
-                        <button onclick="removeExpense('${exp.id}')" class="text-slate-200 hover:text-rose-600 transition-colors">
+                        <button onclick="removeExpense('${exp.id}')" class="text-slate-300 hover:text-rose-600 transition-colors">
                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
                         </button>
                     </div>
@@ -197,14 +235,14 @@
             `).join('');
         }
 
-        function refreshDashboard() {
+        function calculateTotals() {
             const totalInc = Object.values(currentIncome).reduce((a, b) => a + b, 0);
             const totalExp = expenses.reduce((a, b) => a + b.amount, 0);
             const net = totalInc - totalExp;
 
-            document.getElementById('totalIncomeDisplay').innerText = `$${totalInc.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-            document.getElementById('totalExpenseDisplay').innerText = `$${totalExp.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-            document.getElementById('netCashDisplay').innerText = `$${net.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+            document.getElementById('totalInc').innerText = `$${totalInc.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+            document.getElementById('totalExp').innerText = `$${totalExp.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+            document.getElementById('netCash').innerText = `$${net.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
         }
 
         window.onload = init;
@@ -214,103 +252,96 @@
         body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
         input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
-        @media print { .no-print { display: none; } }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        @media print { .no-print { display: none; } body { background: white; } }
     </style>
 </head>
-<body class="bg-slate-50 text-slate-900 min-h-screen pb-32">
+<body class="bg-[#f8fafc] text-slate-900 min-h-screen pb-20">
 
-    <header class="bg-white/90 backdrop-blur-xl border-b border-slate-200 sticky top-0 z-50 px-6 py-4">
-        <div class="max-w-6xl mx-auto flex justify-between items-center">
+    <header class="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-50 px-6 py-4 no-print">
+        <div class="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
             <div class="flex items-center gap-4">
-                <div class="bg-indigo-600 w-11 h-11 flex items-center justify-center rounded-xl text-white shadow-lg shadow-indigo-100">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                <div class="bg-indigo-600 p-2.5 rounded-2xl text-white shadow-xl shadow-indigo-100">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
                 </div>
                 <div>
-                    <h1 class="text-lg font-black tracking-tight text-slate-900">Voices South Portal</h1>
-                    <p class="text-[9px] font-black text-indigo-500 uppercase tracking-[0.2em]">WEEKLY: <span id="dateDisplay" class="text-slate-400">...</span></p>
+                    <h1 class="text-xl font-[900] tracking-tight text-slate-900">Voices South Portal</h1>
+                    <div class="flex items-center gap-2">
+                        <select id="weekSelector" onchange="changeWeek(this.value)" class="bg-transparent text-[10px] font-black text-indigo-600 uppercase tracking-widest outline-none cursor-pointer">
+                            <!-- Weeks dynamic -->
+                        </select>
+                    </div>
                 </div>
             </div>
-            <div class="flex items-center gap-3 px-4 py-2 bg-slate-50 border border-slate-100 rounded-full">
-                <div id="statusDot" class="w-2 h-2 bg-slate-200 rounded-full"></div>
-                <span id="statusText" class="text-[9px] font-black text-slate-500 uppercase tracking-widest">Offline</span>
+            <div class="flex items-center gap-3 px-5 py-2.5 bg-slate-100/50 border border-slate-200/60 rounded-full">
+                <div id="statusDot" class="w-2 h-2 bg-slate-300 rounded-full"></div>
+                <span id="statusText" class="text-[9px] font-black text-slate-500 uppercase tracking-widest">Initializing...</span>
             </div>
         </div>
     </header>
 
-    <main class="max-w-6xl mx-auto p-6 md:p-10 space-y-8">
+    <main class="max-w-6xl mx-auto p-6 md:p-10 space-y-10">
         
-        <!-- Summary Tiles -->
+        <!-- Summary Dashboard -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div class="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm">
-                <p class="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] mb-1">Weekly Receipts</p>
-                <p id="totalIncomeDisplay" class="text-3xl font-black text-emerald-600 tracking-tighter">$0.00</p>
+            <div class="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm">
+                <p class="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] mb-2">Weekly Receipts</p>
+                <p id="totalInc" class="text-4xl font-[900] text-emerald-600 tracking-tighter">$0.00</p>
             </div>
-            <div class="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm">
-                <p class="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] mb-1">Weekly Expenses</p>
-                <p id="totalExpenseDisplay" class="text-3xl font-black text-slate-800 tracking-tighter">$0.00</p>
+            <div class="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm">
+                <p class="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] mb-2">Weekly Expenses</p>
+                <p id="totalExp" class="text-4xl font-[900] text-slate-900 tracking-tighter">$0.00</p>
             </div>
-            <div class="bg-indigo-600 p-6 rounded-[2rem] shadow-xl shadow-indigo-100 text-white">
-                <p class="text-[10px] font-black text-indigo-200 uppercase tracking-[0.15em] mb-1">Cash On Hand</p>
-                <p id="netCashDisplay" class="text-3xl font-black tracking-tighter">$0.00</p>
+            <div class="bg-indigo-600 p-8 rounded-[2.5rem] shadow-2xl shadow-indigo-200 text-white">
+                <p class="text-[10px] font-black text-indigo-200 uppercase tracking-[0.15em] mb-2">Net Cash</p>
+                <p id="netCash" class="text-4xl font-[900] tracking-tighter">$0.00</p>
             </div>
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
-            
-            <!-- Revenue Column -->
-            <section class="lg:col-span-5 bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm h-fit">
-                <div class="flex items-center gap-3 mb-8">
-                    <div class="w-8 h-8 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19 7-7 3 3-7 7-3-3Z"/><path d="m18 13-1.5-7.5L2 2l3.5 14.5L13 18l5-5Z"/><path d="m2 2 8.8 8.8"/><path d="M11.4 11.4 13 13"/></svg>
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-10">
+            <section class="lg:col-span-5 bg-white p-10 rounded-[3rem] border border-slate-200 shadow-sm">
+                <div class="flex items-center justify-between mb-10">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m16 10-4 4-4-4"/></svg>
+                        </div>
+                        <h2 class="text-sm font-black text-slate-900 uppercase tracking-widest">Revenue Entry</h2>
                     </div>
-                    <h2 class="text-xs font-black text-slate-900 uppercase tracking-widest">Revenue Tracking</h2>
                 </div>
-                <div id="incomeFields" class="space-y-1">
-                    <!-- Dynamic -->
-                </div>
+                <div id="incomeFields" class="space-y-2"></div>
             </section>
 
-            <!-- Expense Column -->
-            <section class="lg:col-span-7 space-y-8">
-                <!-- Add New -->
-                <div class="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm">
-                    <h2 class="text-xs font-black text-slate-900 uppercase tracking-widest mb-6">Disbursement Entry</h2>
+            <section class="lg:col-span-7 space-y-10">
+                <div class="bg-slate-900 p-10 rounded-[3rem] text-white">
+                    <h2 class="text-sm font-black uppercase tracking-widest mb-8 text-slate-400">Log Disbursement</h2>
                     <div class="grid grid-cols-1 md:grid-cols-12 gap-4">
                         <div class="md:col-span-6">
-                            <select id="expenseCategory" class="w-full bg-slate-50 border border-slate-100 p-4 rounded-2xl text-xs font-black text-slate-700 outline-none focus:ring-4 ring-indigo-500/10 appearance-none">
-                                <!-- Dynamic -->
+                            <select id="expenseCategory" class="w-full bg-white/10 border border-white/10 p-5 rounded-2xl text-xs font-black text-white outline-none focus:ring-4 ring-indigo-500/20 appearance-none">
                             </select>
                         </div>
                         <div class="md:col-span-4">
-                            <input type="number" id="expenseAmount" placeholder="0.00" class="w-full bg-slate-50 border border-slate-100 p-4 rounded-2xl text-xs font-black outline-none focus:ring-4 ring-indigo-500/10">
+                            <input type="number" id="expenseAmount" placeholder="0.00" class="w-full bg-white/10 border border-white/10 p-5 rounded-2xl text-xs font-black outline-none focus:ring-4 ring-indigo-500/20 text-white placeholder:text-slate-500">
                         </div>
                         <div class="md:col-span-2">
-                            <button onclick="addExpense()" class="w-full h-full bg-slate-900 text-white rounded-2xl hover:bg-black transition-all active:scale-95 flex items-center justify-center">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                            <button onclick="addExpense()" class="w-full h-full bg-indigo-500 hover:bg-indigo-400 text-white rounded-2xl transition-all active:scale-95 flex items-center justify-center">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                             </button>
                         </div>
                     </div>
                 </div>
 
-                <!-- Ledger -->
-                <div class="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm">
-                    <div class="flex justify-between items-center mb-6">
-                        <h2 class="text-xs font-black text-slate-900 uppercase tracking-widest">Activity Log</h2>
-                        <span class="text-[9px] font-black text-slate-300 uppercase tracking-widest">Synced with Cloud</span>
-                    </div>
-                    <div id="expenseList" class="space-y-3 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
-                        <!-- Dynamic -->
-                    </div>
+                <div class="bg-white p-10 rounded-[3rem] border border-slate-200 shadow-sm">
+                    <h2 class="text-sm font-black text-slate-900 uppercase tracking-widest mb-8">Disbursement Ledger</h2>
+                    <div id="expenseList" class="space-y-4 max-h-[500px] overflow-y-auto custom-scrollbar pr-2"></div>
                 </div>
             </section>
         </div>
     </main>
 
-    <div class="fixed bottom-8 left-1/2 -translate-x-1/2 w-full max-w-sm px-6 no-print">
-        <button onclick="window.print()" class="w-full bg-slate-900 hover:bg-black text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] shadow-2xl shadow-slate-200 transition-all active:scale-95 flex items-center justify-center gap-3">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
-            Print Statement
+    <div class="fixed bottom-10 left-1/2 -translate-x-1/2 w-full max-w-sm px-6 no-print">
+        <button onclick="window.print()" class="w-full bg-slate-900 hover:bg-black text-white py-5 rounded-[2rem] font-black text-[11px] uppercase tracking-[0.25em] shadow-2xl shadow-slate-300 transition-all active:scale-95 flex items-center justify-center gap-4">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+            Print Summary Statement
         </button>
     </div>
 

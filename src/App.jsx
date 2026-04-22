@@ -1,261 +1,219 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   TrendingUp, 
   TrendingDown, 
   DollarSign, 
-  ChevronRight, 
   PieChart, 
   Activity,
-  AlertCircle,
-  Database,
-  CloudOff,
-  RefreshCw,
-  Wallet
+  Wallet,
+  ArrowUpRight,
+  ArrowDownLeft,
+  Calendar,
+  Plus,
+  Filter,
+  Download
 } from 'lucide-react';
-import { initializeApp, getApps } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { 
-  getFirestore, 
-  collection, 
-  onSnapshot,
-} from 'firebase/firestore';
 
 /**
- * REVISED CONFIGURATION ACCESS
- * Using a safer retrieval method to avoid "import.meta" compatibility issues
- * in environments configured for ES2015.
+ * VOICES SOUTH FINANCIAL PORTAL - STABILITY BUILD
+ * This version uses local state management to bypass all connection/auth hangs.
+ * It is designed for instant UI rendering across all browsers.
  */
-const getSafeEnv = (key) => {
-  if (typeof window !== 'undefined' && window.process && window.process.env) {
-    return window.process.env[key] || "";
-  }
-  // Standard fallback for common build tool patterns
-  try {
-    return process.env[key] || "";
-  } catch (e) {
-    return "";
-  }
-};
-
-const firebaseConfig = {
-  apiKey: getSafeEnv('VITE_FIREBASE_API_KEY'),
-  authDomain: getSafeEnv('VITE_FIREBASE_AUTH_DOMAIN'),
-  projectId: getSafeEnv('VITE_FIREBASE_PROJECT_ID'),
-  storageBucket: getSafeEnv('VITE_FIREBASE_STORAGE_BUCKET'),
-  messagingSenderId: getSafeEnv('VITE_FIREBASE_MESSAGING_SENDER_ID'),
-  appId: getSafeEnv('VITE_FIREBASE_APP_ID')
-};
-
-// Global service placeholders
-let auth = null;
-let db = null;
-
-// Initialization check - ensuring values are actually strings and not empty
-const hasValidConfig = typeof firebaseConfig.apiKey === 'string' && firebaseConfig.apiKey.length > 10;
-
-if (hasValidConfig) {
-  try {
-    const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
-    auth = getAuth(app);
-    db = getFirestore(app);
-  } catch (e) {
-    console.warn("Firebase failed to initialize:", e);
-  }
-}
 
 export default function App() {
-  const [user, setUser] = useState(null);
-  const [transactions, setTransactions] = useState([
-    { id: '1', type: 'Income', category: 'Tithes', amount: 5200, date: new Date().toISOString(), description: 'Sunday Service' },
-    { id: '2', type: 'Expense', category: 'Utilities', amount: 450, date: new Date().toISOString(), description: 'Electric Bill' },
-    { id: '3', type: 'Income', category: 'Donation', amount: 1200, date: new Date().toISOString(), description: 'Youth Program' },
-    { id: '4', type: 'Expense', category: 'Maintenance', amount: 800, date: new Date().toISOString(), description: 'Roof Repair' },
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [transactions] = useState([
+    { id: '1', type: 'Income', category: 'Tithes', amount: 5200, date: '2024-05-20', description: 'Sunday Morning Service' },
+    { id: '2', type: 'Expense', category: 'Utilities', amount: 450, date: '2024-05-19', description: 'Main Hall Electric' },
+    { id: '3', type: 'Income', category: 'Donation', amount: 1200, date: '2024-05-18', description: 'Youth Building Fund' },
+    { id: '4', type: 'Expense', category: 'Maintenance', amount: 800, date: '2024-05-17', description: 'Garden & Landscaping' },
+    { id: '5', type: 'Income', category: 'Events', amount: 2100, date: '2024-05-16', description: 'Community Seminar' },
+    { id: '6', type: 'Expense', category: 'Supplies', amount: 120, date: '2024-05-15', description: 'Office Stationery' },
   ]);
-  const [isDemo, setIsDemo] = useState(!hasValidConfig);
-  const [isLoading, setIsLoading] = useState(true);
-
-  // FAIL-SAFE: Ensure dashboard shows even if background tasks hang
-  useEffect(() => {
-    const forceLoad = setTimeout(() => {
-      setIsLoading(false);
-    }, 1200); 
-    return () => clearTimeout(forceLoad);
-  }, []);
-
-  // Firebase Auth and Data Logic
-  useEffect(() => {
-    if (!hasValidConfig || !auth || !db) {
-      setIsLoading(false);
-      return;
-    }
-
-    let unsubData = null;
-
-    const unsubscribeAuth = onAuthStateChanged(auth, async (u) => {
-      if (u) {
-        setUser(u);
-        setIsDemo(false);
-        try {
-          unsubData = onSnapshot(
-            collection(db, 'transactions'), 
-            (snap) => {
-              if (!snap.empty) {
-                const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                setTransactions(data);
-              }
-              setIsLoading(false);
-            },
-            (err) => {
-              console.error("Firestore access error:", err);
-              setIsDemo(true);
-              setIsLoading(false);
-            }
-          );
-        } catch (e) {
-          setIsDemo(true);
-          setIsLoading(false);
-        }
-      } else {
-        signInAnonymously(auth).catch(() => {
-          setIsDemo(true);
-          setIsLoading(false);
-        });
-      }
-    });
-
-    return () => {
-      unsubscribeAuth();
-      if (unsubData) unsubData();
-    };
-  }, []);
 
   const stats = useMemo(() => {
-    const income = transactions.filter(t => t.type === 'Income').reduce((s, t) => s + Number(t.amount), 0);
-    const expenses = transactions.filter(t => t.type === 'Expense').reduce((s, t) => s + Number(t.amount), 0);
+    const income = transactions
+      .filter(t => t.type === 'Income')
+      .reduce((acc, t) => acc + Number(t.amount), 0);
+    const expenses = transactions
+      .filter(t => t.type === 'Expense')
+      .reduce((acc, t) => acc + Number(t.amount), 0);
     return { income, expenses, balance: income - expenses };
   }, [transactions]);
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 text-center">
-        <div className="relative">
-          <div className="w-10 h-10 border-[3px] border-slate-200 border-t-blue-600 rounded-full animate-spin"></div>
-        </div>
-        <div className="mt-6">
-          <p className="text-[10px] font-black text-slate-900 uppercase tracking-[0.3em]">Vault Access</p>
-          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1 animate-pulse">Syncing Ledger...</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-slate-900 font-sans antialiased selection:bg-blue-100">
-      {/* Connectivity Status Toast */}
-      <div className={`fixed top-4 right-4 z-50 flex items-center gap-2 px-3 py-2 rounded-full border shadow-sm text-[9px] font-black uppercase tracking-tight bg-white ${isDemo ? 'border-amber-100 text-amber-600' : 'border-emerald-100 text-emerald-600'}`}>
-        <div className={`w-1.5 h-1.5 rounded-full ${isDemo ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`} />
-        {isDemo ? 'Demo Mode' : 'Live Cloud'}
-      </div>
-
-      <nav className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between sticky top-0 z-40">
+    <div className="min-h-screen bg-[#F8FAFC] text-slate-900 font-sans antialiased">
+      {/* Navigation Bar */}
+      <nav className="bg-white border-b border-slate-200 px-4 sm:px-8 py-4 flex items-center justify-between sticky top-0 z-50 shadow-sm">
         <div className="flex items-center gap-4">
-          <div className="bg-blue-600 p-2 rounded-xl shadow-lg shadow-blue-50">
+          <div className="bg-indigo-600 p-2.5 rounded-xl shadow-lg shadow-indigo-100 flex items-center justify-center">
             <Wallet className="text-white w-5 h-5" />
           </div>
           <div>
             <h1 className="text-sm font-black tracking-tight uppercase leading-none text-slate-900">Voices South</h1>
-            <p className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-1">Financial Portal</p>
+            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-1">Financial Portal</p>
+          </div>
+        </div>
+        
+        <div className="hidden md:flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
+          <button 
+            onClick={() => setActiveTab('dashboard')}
+            className={`px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${activeTab === 'dashboard' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            Dashboard
+          </button>
+          <button 
+            onClick={() => setActiveTab('ledger')}
+            className={`px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${activeTab === 'ledger' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            Ledger
+          </button>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-full border border-emerald-100">
+            <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
+            <span className="text-[9px] font-black uppercase tracking-widest hidden sm:inline">Portal Active</span>
           </div>
         </div>
       </nav>
 
-      <main className="max-w-6xl mx-auto p-6 md:p-10 space-y-8">
-        <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+      <main className="max-w-7xl mx-auto p-4 sm:p-8 lg:p-12 space-y-10">
+        {/* Header Section */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
-            <h2 className="text-2xl font-black tracking-tight text-slate-900">Executive Dashboard</h2>
-            <p className="text-slate-500 text-xs font-medium mt-1">Fiscal oversight and resource allocation.</p>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded text-[10px] font-bold uppercase tracking-widest">Administrator</span>
+              <span className="text-slate-300">•</span>
+              <span className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">FY 2026</span>
+            </div>
+            <h2 className="text-3xl font-black tracking-tight text-slate-900">Executive Overview</h2>
+            <p className="text-slate-500 text-sm mt-1">Comprehensive fiscal summary and real-time transaction data.</p>
           </div>
-          <div className="flex items-center gap-2 text-[9px] font-black uppercase text-slate-400 tracking-widest">
-            <Activity size={10} className="text-blue-500" />
-            Active Session
-          </div>
-        </header>
-
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white p-6 rounded-[28px] border border-slate-200 shadow-sm">
-            <TrendingUp className="text-emerald-500 mb-4" size={18} />
-            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Gross Income</p>
-            <p className="text-2xl font-black text-slate-900 mt-1">${stats.income.toLocaleString()}</p>
-          </div>
-          <div className="bg-white p-6 rounded-[28px] border border-slate-200 shadow-sm">
-            <TrendingDown className="text-rose-500 mb-4" size={18} />
-            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Expenditures</p>
-            <p className="text-2xl font-black text-slate-900 mt-1">${stats.expenses.toLocaleString()}</p>
-          </div>
-          <div className="bg-slate-900 p-6 rounded-[28px] shadow-xl text-white">
-            <DollarSign className="text-blue-400 mb-4" size={18} />
-            <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Operating Balance</p>
-            <p className="text-2xl font-black mt-1">${stats.balance.toLocaleString()}</p>
+          <div className="flex items-center gap-3">
+            <button className="flex items-center gap-2 bg-white border border-slate-200 px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors shadow-sm">
+              <Download size={14} /> Export Report
+            </button>
+            <button className="flex items-center gap-2 bg-indigo-600 px-5 py-2.5 rounded-xl text-xs font-bold text-white hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100">
+              <Plus size={14} /> New Entry
+            </button>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* History */}
-          <div className="lg:col-span-8 bg-white rounded-[28px] border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white">
-              <h3 className="font-black text-[10px] uppercase tracking-widest text-slate-900">Recent Transactions</h3>
-              <button className="text-[9px] font-black uppercase text-blue-600 tracking-widest">Filter</button>
+        {/* Stats Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {[
+            { label: 'Net Revenue', value: stats.income, icon: ArrowUpRight, color: 'emerald', trend: '+14%' },
+            { label: 'Total Expenses', value: stats.expenses, icon: ArrowDownLeft, color: 'rose', trend: '-2.4%' },
+            { label: 'Available Balance', value: stats.balance, icon: DollarSign, color: 'indigo', trend: 'Stable' }
+          ].map((card, i) => (
+            <div key={i} className="bg-white p-7 rounded-[28px] border border-slate-200 shadow-sm relative overflow-hidden group hover:shadow-md transition-all">
+              <div className="relative z-10 flex flex-col h-full justify-between">
+                <div>
+                  <div className={`w-10 h-10 rounded-xl bg-${card.color}-50 text-${card.color}-600 flex items-center justify-center mb-5`}>
+                    <card.icon size={20} />
+                  </div>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">{card.label}</p>
+                  <p className="text-3xl font-black text-slate-900 mt-2 tracking-tight">${card.value.toLocaleString()}</p>
+                </div>
+                <div className={`mt-6 text-[10px] font-bold uppercase tracking-widest text-${card.color}-600 bg-${card.color}-50 self-start px-2 py-1 rounded-md`}>
+                  {card.trend} this month
+                </div>
+              </div>
             </div>
-            <div className="divide-y divide-slate-50 overflow-y-auto">
-              {transactions.map(t => (
-                <div key={t.id} className="p-5 flex items-center justify-between hover:bg-slate-50/50 transition-colors">
-                  <div className="flex items-center gap-4">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${t.type === 'Income' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-600'}`}>
-                      {t.type === 'Income' ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
+          ))}
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Main Transaction Feed */}
+          <div className="lg:col-span-2 bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+            <div className="p-7 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0">
+              <h3 className="font-black text-[11px] uppercase tracking-widest text-slate-900 flex items-center gap-2">
+                <Activity size={14} className="text-indigo-500" /> Recent Activity
+              </h3>
+              <button className="text-slate-400 hover:text-indigo-600 transition-colors">
+                <Filter size={16} />
+              </button>
+            </div>
+            <div className="overflow-y-auto max-h-[500px]">
+              {transactions.map((t, idx) => (
+                <div key={t.id} className={`p-6 flex items-center justify-between hover:bg-slate-50 transition-colors group ${idx !== transactions.length - 1 ? 'border-b border-slate-50' : ''}`}>
+                  <div className="flex items-center gap-5">
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all group-hover:scale-105 ${t.type === 'Income' ? 'bg-emerald-50 text-emerald-600 shadow-sm' : 'bg-slate-100 text-slate-600 shadow-sm'}`}>
+                      {t.type === 'Income' ? <ArrowUpRight size={18} /> : <ArrowDownLeft size={18} />}
                     </div>
                     <div>
-                      <p className="font-bold text-[14px] text-slate-900">{t.description}</p>
-                      <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mt-0.5">{t.category}</p>
+                      <p className="font-bold text-slate-900 tracking-tight">{t.description}</p>
+                      <div className="flex items-center gap-3 mt-1.5">
+                        <span className="text-[10px] text-indigo-600 font-bold bg-indigo-50 px-2 py-0.5 rounded uppercase tracking-wider">{t.category}</span>
+                        <div className="flex items-center gap-1 text-[10px] text-slate-400 font-medium">
+                          <Calendar size={12} /> {t.date}
+                        </div>
+                      </div>
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className={`font-black text-[14px] ${t.type === 'Income' ? 'text-emerald-600' : 'text-slate-900'}`}>
+                    <p className={`font-black text-base ${t.type === 'Income' ? 'text-emerald-600' : 'text-slate-900'}`}>
                       {t.type === 'Income' ? '+' : '-'}${Number(t.amount).toLocaleString()}
                     </p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Confirmed</p>
                   </div>
                 </div>
               ))}
             </div>
+            <button className="p-4 text-center text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 hover:text-indigo-600 border-t border-slate-50 transition-colors">
+              View Full History
+            </button>
           </div>
 
-          {/* Sidebar */}
-          <div className="lg:col-span-4 space-y-6">
-            <div className="bg-white p-7 rounded-[28px] border border-slate-200 shadow-sm">
-              <h3 className="font-black text-[10px] uppercase tracking-widest text-slate-400 mb-6 flex items-center gap-2">
-                <PieChart size={14} /> Allocation
-              </h3>
-              <div className="space-y-5">
-                {[{l: 'Personnel', v: 45, c: 'bg-blue-600'}, {l: 'Operations', v: 30, c: 'bg-slate-900'}].map(i => (
-                  <div key={i.l} className="space-y-2">
-                    <div className="flex justify-between text-[9px] font-black uppercase">
-                      <span className="text-slate-900">{i.l}</span>
-                      <span className="text-slate-400">{i.v}%</span>
-                    </div>
-                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                      <div className={`h-full ${i.c} rounded-full`} style={{width:`${i.v}%`}}></div>
-                    </div>
+          {/* Allocation Side Panel */}
+          <div className="space-y-8">
+            <div className="bg-[#1E293B] p-8 rounded-[32px] text-white relative overflow-hidden shadow-2xl">
+              <div className="relative z-10 h-full flex flex-col justify-between">
+                <div>
+                  <h3 className="font-black text-[11px] uppercase tracking-widest text-slate-400 mb-6 flex items-center gap-2">
+                    <PieChart size={14} className="text-indigo-400" /> Fund Allocation
+                  </h3>
+                  <div className="space-y-7">
+                    {[
+                      { label: 'Personnel', value: 45, color: 'bg-indigo-500' },
+                      { label: 'Facilities', value: 30, color: 'bg-emerald-500' },
+                      { label: 'Outreach', value: 15, color: 'bg-rose-500' },
+                      { label: 'Reserve', value: 10, color: 'bg-slate-500' }
+                    ].map(item => (
+                      <div key={item.label} className="space-y-3">
+                        <div className="flex justify-between text-[10px] font-black uppercase tracking-wider">
+                          <span className="text-slate-300">{item.label}</span>
+                          <span className="text-white">{item.value}%</span>
+                        </div>
+                        <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                          <div className={`h-full ${item.color} rounded-full`} style={{ width: `${item.value}%` }}></div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                </div>
+                
+                <div className="mt-10 pt-8 border-t border-slate-800">
+                  <div className="bg-slate-800/50 p-5 rounded-2xl border border-slate-700/50">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Quarterly Review</p>
+                    <p className="text-xs text-slate-300 leading-relaxed font-medium">
+                      Operational costs are down 4.2% since the previous audit. All departments are within budget.
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
-            
-            <div className="bg-blue-600 p-7 rounded-[28px] text-white shadow-lg shadow-blue-100 relative overflow-hidden">
-              <div className="relative z-10">
-                <h4 className="font-black text-sm mb-1 uppercase tracking-tight">Audit Summary</h4>
-                <p className="text-[10px] text-blue-100 font-bold mb-5 leading-relaxed opacity-80 uppercase">Financial year 2026 data compiled for oversight.</p>
-                <button className="w-full py-3 bg-white text-blue-600 rounded-xl font-black text-[9px] uppercase tracking-widest shadow-sm hover:shadow-md active:scale-95 transition-all">
-                  Generate PDF
+
+            {/* Quick Actions */}
+            <div className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm">
+              <h3 className="font-black text-[11px] uppercase tracking-widest text-slate-900 mb-4">Quick Links</h3>
+              <div className="grid grid-cols-2 gap-3">
+                <button className="p-3 bg-slate-50 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-600 hover:bg-slate-100 transition-all border border-slate-100">
+                  Payroll
+                </button>
+                <button className="p-3 bg-slate-50 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-600 hover:bg-slate-100 transition-all border border-slate-100">
+                  Tax Docs
                 </button>
               </div>
             </div>

@@ -3,386 +3,319 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Voices South Financial Portal</title>
+    <title>Church Financial Management</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
-    
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js";
-        import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, deleteDoc } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
-
-        let db, auth, appId;
-        let currentIncome = {};
-        let expenses = [];
-        let activeWeekKey = '';
-        let unsubscribeIncome = null;
-        let unsubscribeExpenses = null;
-
-        const incomeCats = [
-            'Cash/Checks', 
-            'Credit Card', 
-            'Text', 
-            'Givelify', 
-            'Tithely', 
-            'CashApp', 
-            'Zelle', 
-            'Website Giving'
-        ];
-
-        // Expanded list based on previous iterations
-        const expenseCats = [
-            'Lady Val Payroll', 
-            'Mortgage - Kirkland Group', 
-            'Georgia Power', 
-            'Georgia Natural Gas', 
-            'Spectrum', 
-            'Water Authority', 
-            'Pest Control', 
-            'Payroll Taxes', 
-            'Band Payroll', 
-            'Love Offerings', 
-            'Guest Speakers',
-            'Ministry Design', 
-            'Admin / Office Supplies',
-            'Travel / Transportation',
-            'Hospitality / Outreach',
-            'Repairs / Maintenance',
-            'Other'
-        ];
-
-        const ANCHOR_DATE = new Date(2026, 0, 2); 
-
-        function updateStatus(text, colorClass, showRetry = false) {
-            const dot = document.getElementById('statusDot');
-            const label = document.getElementById('statusText');
-            const retryBtn = document.getElementById('retryBtn');
-            if (dot && label) {
-                dot.className = `w-2 h-2 rounded-full ${colorClass}`;
-                label.innerText = text;
-            }
-            if (retryBtn) retryBtn.style.display = showRetry ? 'block' : 'none';
-        }
-
-        function generateWeeks() {
-            const select = document.getElementById('weekSelector');
-            if (!select) return;
-            select.innerHTML = '';
-            
-            const weeks = [];
-            const limit = new Date();
-            limit.setDate(limit.getDate() + 21);
-
-            let current = new Date(ANCHOR_DATE);
-            while (current <= limit) {
-                const month = current.getMonth() + 1;
-                const day = current.getDate();
-                const year = current.getFullYear();
-                const key = `${month}-${day}-${year}`;
-                weeks.unshift(key); 
-                current.setDate(current.getDate() + 7);
-            }
-
-            weeks.forEach(key => {
-                const opt = document.createElement('option');
-                opt.value = key;
-                opt.innerText = `Week of ${key}`;
-                select.appendChild(opt);
-            });
-
-            activeWeekKey = weeks[0];
-            return weeks[0];
-        }
-
-        async function init() {
-            renderStaticUI();
-            const initialWeek = generateWeeks();
-            updateStatus("Connecting...", "bg-amber-400 animate-pulse");
-
-            try {
-                let firebaseConfig;
-                if (typeof __firebase_config !== 'undefined' && __firebase_config) {
-                    firebaseConfig = JSON.parse(__firebase_config);
-                } else {
-                    firebaseConfig = {
-                        apiKey: "AIzaSyDb6oFZEStklFT_Dt2riDbQC_IJPHcT304",
-                        authDomain: "church-finance-dashboard-40dca.firebaseapp.com",
-                        projectId: "church-finance-dashboard-40dca",
-                        storageBucket: "church-finance-dashboard-40dca.firebasestorage.app",
-                        messagingSenderId: "480863076081",
-                        appId: "1:480863076081:web:dd01f7270a7cd158f93350"
-                    };
-                }
-
-                const app = initializeApp(firebaseConfig);
-                db = getFirestore(app);
-                auth = getAuth(app);
-                appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-
-                onAuthStateChanged(auth, (user) => {
-                    if (user) {
-                        updateStatus("Synced & Active", "bg-emerald-500");
-                        loadWeekData(activeWeekKey || initialWeek);
-                    } else {
-                        updateStatus("Auth Required", "bg-rose-500", true);
-                    }
-                });
-
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
-
-            } catch (err) {
-                console.error("Init Error:", err);
-                updateStatus("Offline Mode", "bg-slate-400", true);
-                calculateTotals();
-            }
-        }
-
-        async function loadWeekData(weekKey) {
-            if (!db || !auth.currentUser) return;
-            
-            if (unsubscribeIncome) unsubscribeIncome();
-            if (unsubscribeExpenses) unsubscribeExpenses();
-
-            activeWeekKey = weekKey;
-            
-            const incomeDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'income_summaries', weekKey);
-            unsubscribeIncome = onSnapshot(incomeDocRef, (docSnap) => {
-                currentIncome = docSnap.exists() ? docSnap.data().income : {};
-                syncIncomeInputs();
-                calculateTotals();
-            }, (err) => console.log("Income Sync Wait..."));
-
-            const expensesColRef = collection(db, 'artifacts', appId, 'public', 'data', `expenses_${weekKey}`);
-            unsubscribeExpenses = onSnapshot(expensesColRef, (colSnap) => {
-                expenses = colSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-                renderExpenseList();
-                calculateTotals();
-            }, (err) => console.log("Expense Sync Wait..."));
-        }
-
-        function renderStaticUI() {
-            const incContainer = document.getElementById('incomeFields');
-            if (!incContainer) return;
-            incContainer.innerHTML = incomeCats.map(cat => `
-                <div class="flex justify-between items-center py-4 border-b border-slate-50 last:border-0">
-                    <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">${cat}</label>
-                    <div class="flex items-center gap-2">
-                        <span class="text-slate-300 font-bold">$</span>
-                        <input type="number" step="0.01" data-cat="${cat}" onchange="handleIncomeChange('${cat}', this.value)" 
-                        placeholder="0.00" class="income-input w-32 text-right font-black text-slate-800 outline-none bg-slate-50 focus:bg-indigo-50 focus:ring-2 ring-indigo-500/10 rounded-xl p-2 transition-all">
-                    </div>
-                </div>
-            `).join('');
-
-            const expSelect = document.getElementById('expenseCategory');
-            if (expSelect) {
-                expSelect.innerHTML = `<option value="" disabled selected class="text-slate-900">Select Category</option>` + 
-                    expenseCats.map(cat => `<option value="${cat}" class="text-slate-900 bg-white">${cat}</option>`).join('');
-            }
-        }
-
-        window.changeWeek = (val) => {
-            loadWeekData(val);
-        };
-
-        window.handleIncomeChange = async (cat, val) => {
-            const amount = parseFloat(val) || 0;
-            currentIncome[cat] = amount;
-            calculateTotals();
-            
-            if (!db || !auth.currentUser) return;
-            const incomeDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'income_summaries', activeWeekKey);
-            await setDoc(incomeDocRef, { 
-                income: currentIncome, 
-                lastUpdated: new Date().toISOString() 
-            }, { merge: true });
-        };
-
-        window.addExpense = async () => {
-            const cat = document.getElementById('expenseCategory').value;
-            const amtInput = document.getElementById('expenseAmount');
-            const amt = parseFloat(amtInput.value) || 0;
-
-            if (!cat || amt <= 0) return;
-
-            const newExp = { id: Date.now().toString(), category: cat, amount: amt, timestamp: new Date().toISOString() };
-            expenses.push(newExp);
-            renderExpenseList();
-            calculateTotals();
-
-            if (db && auth.currentUser) {
-                const expenseDocRef = doc(db, 'artifacts', appId, 'public', 'data', `expenses_${activeWeekKey}`, newExp.id);
-                await setDoc(expenseDocRef, newExp);
-            }
-            
-            amtInput.value = '';
-        };
-
-        window.removeExpense = async (id) => {
-            expenses = expenses.filter(e => e.id !== id);
-            renderExpenseList();
-            calculateTotals();
-
-            if (db && auth.currentUser) {
-                const docRef = doc(db, 'artifacts', appId, 'public', 'data', `expenses_${activeWeekKey}`, id);
-                await deleteDoc(docRef);
-            }
-        };
-
-        function syncIncomeInputs() {
-            document.querySelectorAll('.income-input').forEach(input => {
-                const cat = input.dataset.cat;
-                if (document.activeElement !== input) {
-                    input.value = currentIncome[cat] || '';
-                }
-            });
-        }
-
-        function renderExpenseList() {
-            const list = document.getElementById('expenseList');
-            if (!list) return;
-            if (expenses.length === 0) {
-                list.innerHTML = `<div class="py-12 text-center text-[10px] font-black text-slate-300 uppercase tracking-widest">No Disbursements</div>`;
-                return;
-            }
-            list.innerHTML = expenses.map(exp => `
-                <div class="flex justify-between items-center p-4 bg-white border border-slate-100 rounded-2xl">
-                    <div>
-                        <p class="text-[11px] font-black text-slate-800 uppercase mb-1">${exp.category}</p>
-                        <p class="text-[9px] font-bold text-slate-400 uppercase">${new Date(exp.timestamp).toLocaleDateString()}</p>
-                    </div>
-                    <div class="flex items-center gap-4">
-                        <span class="font-black text-rose-500 text-sm">-$${exp.amount.toFixed(2)}</span>
-                        <button onclick="removeExpense('${exp.id}')" class="text-slate-200 hover:text-rose-600">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
-                        </button>
-                    </div>
-                </div>
-            `).join('');
-        }
-
-        function calculateTotals() {
-            const totalInc = Object.values(currentIncome).reduce((a, b) => a + b, 0);
-            const totalExp = expenses.reduce((a, b) => a + b.amount, 0);
-            const net = totalInc - totalExp;
-
-            const incEl = document.getElementById('totalInc');
-            const expEl = document.getElementById('totalExp');
-            const netEl = document.getElementById('netCash');
-
-            if (incEl) incEl.innerText = `$${totalInc.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-            if (expEl) expEl.innerText = `$${totalExp.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-            if (netEl) netEl.innerText = `$${net.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-        }
-
-        window.addEventListener('load', init);
-    </script>
-
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
     <style>
-        body { font-family: 'Inter', sans-serif; }
-        input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-        @media print { .no-print { display: none; } }
-        
-        /* Fix for dark mode system settings overriding select visibility */
-        select option {
-            color: #0f172a !important; /* text-slate-900 */
-            background-color: #ffffff !important;
+        :root {
+            --primary: #1e40af;
+            --secondary: #64748b;
+            --accent: #4f46e5;
+        }
+        body {
+            background-color: #f8fafc;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(226, 232, 240, 0.8);
+            border-radius: 24px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);
+        }
+        .input-group label {
+            display: block;
+            font-size: 0.75rem;
+            font-weight: 800;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.5rem;
+            padding-left: 0.25rem;
+        }
+        .input-style {
+            width: 100%;
+            padding: 1rem;
+            background-color: #f1f5f9;
+            border: 2px solid transparent;
+            border-radius: 16px;
+            font-weight: 600;
+            color: #1e293b;
+            transition: all 0.2s;
+        }
+        .input-style:focus {
+            outline: none;
+            background-color: white;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px rgba(30, 64, 175, 0.1);
+        }
+        .btn-submit {
+            background: linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%);
+            color: white;
+            width: 100%;
+            padding: 1.25rem;
+            border-radius: 18px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.025em;
+            box-shadow: 0 4px 12px rgba(30, 64, 175, 0.2);
+            transition: all 0.2s;
+        }
+        .btn-submit:active {
+            transform: scale(0.98);
+        }
+        .hidden { display: none; }
+        .animate-in { animation: slideIn 0.3s ease-out forwards; }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
         }
     </style>
 </head>
-<body class="bg-[#fcfdfe] text-slate-900 min-h-screen pb-24">
+<body class="p-4 md:p-10 flex flex-col items-center min-h-screen">
 
-    <header class="bg-white/90 backdrop-blur-xl border-b border-slate-100 sticky top-0 z-50 px-6 py-5 no-print">
-        <div class="max-w-6xl mx-auto flex justify-between items-center">
-            <div class="flex items-center gap-5">
-                <div class="bg-indigo-600 p-3 rounded-2xl text-white shadow-lg shadow-indigo-100">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+    <div class="w-full max-w-xl space-y-8">
+        <!-- Brand Header -->
+        <header class="flex items-center justify-between px-2">
+            <div class="flex items-center gap-3">
+                <div class="bg-blue-600 p-2.5 rounded-2xl shadow-lg shadow-blue-200">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
                 </div>
                 <div>
-                    <h1 class="text-lg font-black tracking-tight text-slate-900 leading-none mb-1">Voices South Portal</h1>
-                    <select id="weekSelector" onchange="changeWeek(this.value)" class="bg-transparent text-[10px] font-black text-indigo-600 uppercase tracking-widest outline-none border-none p-0 cursor-pointer">
-                        <option>Loading weeks...</option>
+                    <h1 class="text-xl font-black text-slate-800 tracking-tight">Finance Portal</h1>
+                    <p id="connectionStatus" class="text-[10px] font-bold text-amber-500 uppercase tracking-widest flex items-center gap-1">
+                        <span class="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse"></span> Offline Mode
+                    </p>
+                </div>
+            </div>
+            <div id="dateDisplay" class="text-right">
+                <p class="text-xs font-black text-slate-400 uppercase">System Date</p>
+                <p class="text-sm font-bold text-slate-700">Loading...</p>
+            </div>
+        </header>
+
+        <!-- Main Entry Card -->
+        <div class="glass-card p-8">
+            <form id="expenseForm" class="space-y-6">
+                
+                <div class="input-group">
+                    <label>Select Category</label>
+                    <select id="category" required class="input-style" onchange="handleCategoryChange()">
+                        <option value="">Choose Category...</option>
+                        <optgroup label="Payroll & Personnel">
+                            <option value="Pastor Payroll">Pastor Payroll</option>
+                            <option value="Lady Val Payroll">Lady Val Payroll</option>
+                            <option value="Band Payroll">Band Payroll</option>
+                        </optgroup>
+                        <optgroup label="Fixed Costs & Banking">
+                            <option value="Mortgage">Mortgage</option>
+                            <option value="First Citizens Bank">First Citizens Bank</option>
+                            <option value="Kaiser Permanente">Kaiser Permanente</option>
+                        </optgroup>
+                        <optgroup label="Utilities & Services">
+                            <option value="Georgia Power">Georgia Power</option>
+                            <option value="Water Authority">Water Authority</option>
+                            <option value="T-Mobile">T-Mobile</option>
+                            <option value="Spectrum">Spectrum</option>
+                        </optgroup>
+                        <optgroup label="Other Operations">
+                            <option value="Guest Speakers">Guest Speakers</option>
+                            <option value="Maintenance">Maintenance</option>
+                            <option value="Supplies">Supplies</option>
+                            <option value="Other">Other</option>
+                        </optgroup>
                     </select>
                 </div>
+
+                <!-- Conditional Information Box -->
+                <div id="infoWrapper" class="hidden animate-in">
+                    <div class="input-group">
+                        <label id="infoLabel">Additional Information</label>
+                        <input type="text" id="infoDetail" placeholder="Enter details..." class="input-style">
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label>Transaction Amount ($)</label>
+                    <div class="relative">
+                        <span class="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-slate-400">$</span>
+                        <input type="number" id="amount" step="0.01" required placeholder="0.00" class="input-style pl-8">
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label>Transaction Date</label>
+                    <input type="date" id="txnDate" required class="input-style">
+                </div>
+
+                <button type="submit" id="submitBtn" class="btn-submit">
+                    Record Expense
+                </button>
+            </form>
+        </div>
+
+        <!-- Feedback UI -->
+        <div id="successMsg" class="hidden bg-emerald-500 text-white p-4 rounded-2xl text-center font-bold text-sm animate-in shadow-lg">
+            ✓ Entry successfully synced to cloud
+        </div>
+
+        <!-- Recent Entries Log -->
+        <section class="space-y-4">
+            <div class="flex items-center justify-between px-2">
+                <h2 class="text-xs font-black text-slate-400 uppercase tracking-widest">Recent Activity</h2>
+                <button onclick="clearLocalLogs()" class="text-[10px] font-bold text-slate-300 hover:text-rose-400 uppercase">Clear View</button>
             </div>
             
-            <div class="flex flex-col items-end gap-1">
-                <div class="flex items-center gap-3 px-4 py-2 bg-slate-50 border border-slate-100 rounded-full">
-                    <div id="statusDot" class="w-2 h-2 bg-slate-300 rounded-full"></div>
-                    <span id="statusText" class="text-[9px] font-black text-slate-500 uppercase tracking-widest text-right">Initializing...</span>
+            <div id="logContainer" class="space-y-3 pb-20">
+                <!-- Log Items injected here -->
+                <div class="text-center py-10 opacity-30">
+                    <p class="text-sm font-bold text-slate-400 uppercase tracking-widest">No entries recorded today</p>
                 </div>
-                <button id="retryBtn" onclick="location.reload()" class="hidden text-[9px] font-black text-indigo-600 uppercase underline">Refresh Page</button>
             </div>
-        </div>
-    </header>
-
-    <main class="max-w-6xl mx-auto p-6 md:p-12 space-y-12">
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div class="bg-white p-10 rounded-[3rem] border border-slate-100 shadow-sm">
-                <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Total Receipts</p>
-                <p id="totalInc" class="text-4xl font-black text-emerald-600 tracking-tighter">$0.00</p>
-            </div>
-            <div class="bg-white p-10 rounded-[3rem] border border-slate-100 shadow-sm">
-                <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Total Expenses</p>
-                <p id="totalExp" class="text-4xl font-black text-slate-900 tracking-tighter">$0.00</p>
-            </div>
-            <div class="bg-indigo-600 p-10 rounded-[3rem] shadow-2xl shadow-indigo-100 text-white">
-                <p class="text-[10px] font-black text-indigo-200 uppercase tracking-widest mb-3">Net Cash</p>
-                <p id="netCash" class="text-4xl font-black tracking-tighter">$0.00</p>
-            </div>
-        </div>
-
-        <div class="grid grid-cols-1 lg:grid-cols-12 gap-12">
-            <section class="lg:col-span-5 bg-white p-10 rounded-[3.5rem] border border-slate-100 shadow-sm">
-                <div class="flex items-center gap-4 mb-10">
-                    <div class="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                    </div>
-                    <h2 class="text-xs font-black text-slate-900 uppercase tracking-widest">Revenue Entry</h2>
-                </div>
-                <div id="incomeFields" class="space-y-1"></div>
-            </section>
-
-            <section class="lg:col-span-7 space-y-12">
-                <div class="bg-slate-900 p-12 rounded-[3.5rem] text-white shadow-2xl">
-                    <h2 class="text-xs font-black uppercase tracking-[0.2em] mb-10 text-slate-500">Log Disbursement</h2>
-                    <div class="grid grid-cols-1 md:grid-cols-12 gap-5">
-                        <div class="md:col-span-6 relative">
-                            <!-- Added appearance-none and custom arrow logic for better visibility -->
-                            <select id="expenseCategory" class="w-full bg-white/5 border border-white/10 p-5 rounded-2xl text-[11px] font-black text-white outline-none focus:ring-2 ring-indigo-500/50 appearance-none cursor-pointer">
-                            </select>
-                            <div class="absolute right-5 top-1/2 -translate-y-1/2 pointer-events-none opacity-50">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-                            </div>
-                        </div>
-                        <div class="md:col-span-4">
-                            <input type="number" id="expenseAmount" placeholder="0.00" class="w-full bg-white/5 border border-white/10 p-5 rounded-2xl text-xs font-black outline-none focus:ring-2 ring-indigo-500/50 text-white">
-                        </div>
-                        <div class="md:col-span-2">
-                            <button onclick="addExpense()" class="w-full h-full bg-indigo-500 hover:bg-indigo-400 text-white rounded-2xl transition-all active:scale-95 flex items-center justify-center">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="bg-white p-12 rounded-[3.5rem] border border-slate-100 shadow-sm">
-                    <h2 class="text-xs font-black text-slate-900 uppercase tracking-widest mb-10">Disbursement Ledger</h2>
-                    <div id="expenseList" class="space-y-4"></div>
-                </div>
-            </section>
-        </div>
-    </main>
-
-    <div class="fixed bottom-10 left-1/2 -translate-x-1/2 w-full max-w-sm px-6 no-print">
-        <button onclick="window.print()" class="w-full bg-slate-900 hover:bg-black text-white py-6 rounded-[2.5rem] font-black text-[11px] uppercase tracking-[0.3em] shadow-2xl flex items-center justify-center gap-4">
-            Print Statement
-        </button>
+        </section>
     </div>
 
+    <!-- Firebase Integration Logic -->
+    <script>
+        // REPLACE WITH YOUR ACTUAL CONFIG FROM PREVIOUS VERSION IF AVAILABLE
+        const firebaseConfig = {
+            apiKey: "AIzaSyDb6oFZEStklFT_Dt2riDbQC_IJPHcT304",
+            authDomain: "church-finance-dashboard-40dca.firebaseapp.com",
+            projectId: "church-finance-dashboard-40dca",
+            storageBucket: "church-finance-dashboard-40dca.firebasestorage.app",
+            messagingSenderId: "480863076081",
+            appId: "1:480863076081:web:dd01f7270a7cd158f93350"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        const auth = firebase.auth();
+        const appId = "church-finance-dashboard-40dca";
+
+        // State Management
+        let isConnected = false;
+
+        // Initialize App
+        window.onload = () => {
+            document.getElementById('txnDate').valueAsDate = new Date();
+            updateHeaderDate();
+            
+            auth.signInAnonymously().then(() => {
+                isConnected = true;
+                const status = document.getElementById('connectionStatus');
+                status.innerHTML = '<span class="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span> Live Cloud Sync';
+                status.className = "text-[10px] font-bold text-emerald-600 uppercase tracking-widest flex items-center gap-1";
+                loadRecentEntries();
+            }).catch(err => {
+                console.error("Auth error:", err);
+            });
+        };
+
+        function updateHeaderDate() {
+            const options = { month: 'short', day: 'numeric', year: 'numeric' };
+            document.querySelector('#dateDisplay p:last-child').innerText = new Date().toLocaleDateString('en-US', options);
+        }
+
+        function handleCategoryChange() {
+            const cat = document.getElementById('category').value;
+            const wrapper = document.getElementById('infoWrapper');
+            const label = document.getElementById('infoLabel');
+            const input = document.getElementById('infoDetail');
+
+            if (cat === 'Guest Speakers' || cat === 'Other') {
+                wrapper.classList.remove('hidden');
+                input.required = true;
+                label.innerText = cat === 'Guest Speakers' ? "Speaker's Name" : "Specify Expense";
+                input.placeholder = cat === 'Guest Speakers' ? "e.g. Pastor John Doe" : "e.g. Office Chairs";
+            } else {
+                wrapper.classList.add('hidden');
+                input.required = false;
+                input.value = "";
+            }
+        }
+
+        document.getElementById('expenseForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('submitBtn');
+            const originalText = btn.innerText;
+            
+            btn.innerText = "Syncing...";
+            btn.disabled = true;
+
+            const entry = {
+                category: document.getElementById('category').value,
+                amount: parseFloat(document.getElementById('amount').value),
+                date: document.getElementById('txnDate').value,
+                info: document.getElementById('infoDetail').value,
+                timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            };
+
+            try {
+                // Determine target week for storage
+                const d = new Date(entry.date);
+                const weekKey = `${d.getMonth() + 1}-${d.getDate()}-${d.getFullYear()}`;
+                
+                await db.collection('artifacts').doc(appId).collection('public').doc('data')
+                        .collection('finance_entries').doc(weekKey).collection('expenses').add(entry);
+
+                showSuccess();
+                addToLocalLog(entry);
+                e.target.reset();
+                handleCategoryChange();
+                document.getElementById('txnDate').valueAsDate = new Date();
+            } catch (err) {
+                alert("Storage error: " + err.message);
+            } finally {
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
+        });
+
+        function showSuccess() {
+            const msg = document.getElementById('successMsg');
+            msg.classList.remove('hidden');
+            setTimeout(() => msg.classList.add('hidden'), 3000);
+        }
+
+        function addToLocalLog(entry) {
+            const container = document.getElementById('logContainer');
+            if (container.querySelector('.opacity-30')) container.innerHTML = '';
+
+            const div = document.createElement('div');
+            div.className = "glass-card p-5 flex justify-between items-center animate-in";
+            
+            const detailHtml = entry.info ? `<p class="text-[10px] font-bold text-blue-500 mt-1">Note: ${entry.info}</p>` : '';
+            
+            div.innerHTML = `
+                <div class="flex flex-col">
+                    <span class="text-sm font-black text-slate-700">${entry.category}</span>
+                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">${entry.date}</span>
+                    ${detailHtml}
+                </div>
+                <div class="text-right">
+                    <span class="text-lg font-black text-rose-500">-$${entry.amount.toFixed(2)}</span>
+                </div>
+            `;
+            container.prepend(div);
+        }
+
+        function clearLocalLogs() {
+            document.getElementById('logContainer').innerHTML = `
+                <div class="text-center py-10 opacity-30">
+                    <p class="text-sm font-bold text-slate-400 uppercase tracking-widest">History cleared from view</p>
+                </div>
+            `;
+        }
+
+        // Mock loader for "Recent Activity" UI feel
+        async function loadRecentEntries() {
+            // In a production app, you'd fetch the last 5 entries from Firestore here.
+        }
+    </script>
 </body>
 </html>

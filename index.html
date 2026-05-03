@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+    <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -38,14 +38,14 @@
 
         function generateWeeks() {
             const select = document.getElementById('weekSelector');
+            if (!select) return;
             select.innerHTML = '';
             
-            // Current actual date
             const now = new Date();
             let current = new Date(ANCHOR_DATE);
             const weeks = [];
 
-            // Generate weeks from anchor until 2 weeks in the future from today
+            // Generate weeks until 2 weeks in the future
             const limit = new Date();
             limit.setDate(limit.getDate() + 14);
 
@@ -54,7 +54,7 @@
                 const day = current.getDate();
                 const year = current.getFullYear();
                 const key = `${month}-${day}-${year}`;
-                weeks.unshift(key); // Newest at top
+                weeks.unshift(key); 
                 current.setDate(current.getDate() + 7);
             }
 
@@ -70,18 +70,27 @@
         }
 
         async function init() {
-            // 1. Immediately render the UI and Weeks so user isn't stuck
             renderStaticUI();
             const initialWeek = generateWeeks();
             updateStatus("Connecting...", "bg-amber-400 animate-pulse");
 
             try {
-                // Check if we are in the Preview environment with auto-config
-                if (typeof __firebase_config === 'undefined') {
-                    throw new Error("Missing Firebase Config - Check Vercel environment variables.");
+                let firebaseConfig;
+                
+                // Fixed the syntax error here and provided your specific project credentials
+                if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+                    firebaseConfig = JSON.parse(__firebase_config);
+                } else {
+                    firebaseConfig = {
+                        apiKey: "AIzaSyDb6oFZEStklFT_Dt2riDbQC_IJPHcT304",
+                        authDomain: "church-finance-dashboard-40dca.firebaseapp.com",
+                        projectId: "church-finance-dashboard-40dca",
+                        storageBucket: "church-finance-dashboard-40dca.firebasestorage.app",
+                        messagingSenderId: "480863076081",
+                        appId: "1:480863076081:web:dd01f7270a7cd158f93350"
+                    };
                 }
 
-                const firebaseConfig = JSON.parse(__firebase_config);
                 const app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
@@ -105,7 +114,6 @@
             } catch (err) {
                 console.error("Init Error:", err);
                 updateStatus("Offline Mode", "bg-slate-400", true);
-                // Even in offline mode, allow interaction (though it won't save)
                 calculateTotals();
             }
         }
@@ -136,6 +144,7 @@
 
         function renderStaticUI() {
             const incContainer = document.getElementById('incomeFields');
+            if (!incContainer) return;
             incContainer.innerHTML = incomeCats.map(cat => `
                 <div class="flex justify-between items-center py-4 border-b border-slate-50 last:border-0">
                     <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">${cat}</label>
@@ -148,8 +157,10 @@
             `).join('');
 
             const expSelect = document.getElementById('expenseCategory');
-            expSelect.innerHTML = `<option value="" disabled selected>Select Category</option>` + 
-                expenseCats.map(cat => `<option value="${cat}">${cat}</option>`).join('');
+            if (expSelect) {
+                expSelect.innerHTML = `<option value="" disabled selected>Select Category</option>` + 
+                    expenseCats.map(cat => `<option value="${cat}">${cat}</option>`).join('');
+            }
         }
 
         window.changeWeek = (val) => {
@@ -211,6 +222,7 @@
 
         function renderExpenseList() {
             const list = document.getElementById('expenseList');
+            if (!list) return;
             if (expenses.length === 0) {
                 list.innerHTML = `<div class="py-12 text-center text-[10px] font-black text-slate-300 uppercase tracking-widest">No Disbursements</div>`;
                 return;
@@ -236,12 +248,16 @@
             const totalExp = expenses.reduce((a, b) => a + b.amount, 0);
             const net = totalInc - totalExp;
 
-            document.getElementById('totalInc').innerText = `$${totalInc.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-            document.getElementById('totalExp').innerText = `$${totalExp.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-            document.getElementById('netCash').innerText = `$${net.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+            const incEl = document.getElementById('totalInc');
+            const expEl = document.getElementById('totalExp');
+            const netEl = document.getElementById('netCash');
+
+            if (incEl) incEl.innerText = `$${totalInc.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+            if (expEl) expEl.innerText = `$${totalExp.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+            if (netEl) netEl.innerText = `$${net.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
         }
 
-        window.onload = init;
+        window.addEventListener('load', init);
     </script>
 
     <style>
@@ -337,4 +353,4 @@
     </div>
 
 </body>
-</html>
+</html>                  

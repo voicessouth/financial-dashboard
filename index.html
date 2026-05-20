@@ -184,22 +184,33 @@
         import { getFirestore, doc, setDoc, onSnapshot, collection, deleteDoc } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
 
-        // Firebase initialization configuration block - dynamically resolved to comply with environment sandbox rules
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
-            apiKey: "AIzaSyDb6oFZEStklFT_Dt2riDbQC_IJPHcT304",
-            authDomain: "church-finance-dashboard-40dca.firebaseapp.com",
-            projectId: "church-finance-dashboard-40dca",
-            storageBucket: "church-finance-dashboard-40dca.firebasestorage.app",
-            messagingSenderId: "480863076081",
-            appId: "1:480863076081:web:dd01f7270a7cd158f93350"
-        };
+        // Safe dynamic resolution of Firebase configuration
+        let firebaseConfig;
+        if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+            try {
+                firebaseConfig = typeof __firebase_config === 'string' ? JSON.parse(__firebase_config) : __firebase_config;
+            } catch (e) {
+                console.error("Failed to parse __firebase_config:", e);
+            }
+        }
+        
+        if (!firebaseConfig) {
+            firebaseConfig = {
+                apiKey: "AIzaSyDb6oFZEStklFT_Dt2riDbQC_IJPHcT304",
+                authDomain: "church-finance-dashboard-40dca.firebaseapp.com",
+                projectId: "church-finance-dashboard-40dca",
+                storageBucket: "church-finance-dashboard-40dca.firebasestorage.app",
+                messagingSenderId: "480863076081",
+                appId: "1:480863076081:web:dd01f7270a7cd158f93350"
+            };
+        }
 
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
         const auth = getAuth(app);
         
         // RULE 1: Standard appId lookup to match exact security paths inside preview environments
-        const appId = typeof __app_id !== 'undefined' ? __app_id : "church-finance-dashboard-40dca";
+        const appId = (typeof __app_id !== 'undefined' && __app_id) ? __app_id : "church-finance-dashboard-40dca";
 
         // Category configurations matching exact sheet values
         const incomeCats = [
@@ -254,6 +265,7 @@
         // Build weeks selector list starting from anchor
         function generateWeeks() {
             const select = document.getElementById('weekSelector');
+            if (!select) return;
             select.innerHTML = '';
             
             const limit = new Date();
@@ -262,8 +274,8 @@
             let current = new Date(ANCHOR_DATE);
             const weeks = [];
             while (current <= limit) {
-                const key = `${current.getMonth() + 1}-${current.getDate()}-${current.getFullYear()}`;
-                weeks.unshift(key); // descending
+                const key = `${current.getMonth() + 1}-${current.getDate()}-${current.getFullYear}`;
+                weeks.unshift(key); // descending order
                 current.setDate(current.getDate() + 7);
             }
 
@@ -278,38 +290,8 @@
             return weeks[0];
         }
 
-        async function initApp() {
-            renderStaticSelectors();
-            const initialWeek = generateWeeks();
-            updateStatus("Connecting...", "bg-amber-400 animate-pulse");
-
-            try {
-                // RULE 3: Secure token priority check BEFORE listeners run
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
-            } catch (authError) {
-                console.error("Auth Handshake Failed:", authError);
-                updateStatus("Offline Session", "bg-slate-400");
-                loadWeekData(activeWeekKey || initialWeek); // local/fallback
-                return;
-            }
-
-            onAuthStateChanged(auth, (user) => {
-                if (user) {
-                    updateStatus("Synced & Active", "bg-emerald-500");
-                    document.getElementById('importDataBtn').classList.remove('hidden');
-                    loadWeekData(activeWeekKey || initialWeek);
-                } else {
-                    updateStatus("Offline Session", "bg-slate-400");
-                }
-            });
-        }
-
-        let unsubscribeIncome = null;
-        let unsubscribeExpenses = null;
+        // Compliant collection name resolver replacing dashes with underscores (Standardizing alphanumeric IDs)
+        const getExpensesColName = (weekKey) => `expenses_${weekKey.replace(/-/g, '_')}`;
 
         function loadWeekData(weekKey) {
             activeWeekKey = weekKey;
@@ -319,9 +301,7 @@
 
             // Strict compliance path for church records: artifacts/{appId}/public/data/...
             const incomeDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'income_summaries', weekKey);
-            
-            // FLATTENED collection hierarchy strictly conforming to RULE 1
-            const expensesColRef = collection(db, 'artifacts', appId, 'public', 'data', `expenses_${weekKey}`);
+            const expensesColRef = collection(db, 'artifacts', appId, 'public', 'data', getExpensesColName(weekKey));
 
             // Listen for Income Summaries
             unsubscribeIncome = onSnapshot(incomeDocRef, (docSnap) => {
@@ -351,15 +331,17 @@
 
         function renderStaticSelectors() {
             const expSelect = document.getElementById('expenseCategory');
-            expSelect.innerHTML = `<option value="" disabled selected>Choose Category</option>` +
-                expenseCats.map(cat => `<option value="${cat}" class="text-slate-900 bg-white">${cat}</option>`).join('');
-            
+            if (expSelect) {
+                expSelect.innerHTML = `<option value="" disabled selected>Choose Category</option>` +
+                    expenseCats.map(cat => `<option value="${cat}" class="text-slate-900 bg-white">${cat}</option>`).join('');
+            }
             refreshRevenueFields();
         }
 
         window.refreshRevenueFields = () => {
             const currentDay = document.getElementById('revenueDay').value;
             const container = document.getElementById('incomeFields');
+            if (!container) return;
             
             container.innerHTML = incomeCats.map(cat => {
                 const value = (incomeData[currentDay] && incomeData[currentDay][cat]) ? incomeData[currentDay][cat] : '';
@@ -430,7 +412,7 @@
                 timestamp: new Date().toISOString()
             };
 
-            const expensesColRef = collection(db, 'artifacts', appId, 'public', 'data', `expenses_${activeWeekKey}`);
+            const expensesColRef = collection(db, 'artifacts', appId, 'public', 'data', getExpensesColName(activeWeekKey));
             await setDoc(doc(expensesColRef, id), expenseItem);
 
             // clear input form
@@ -441,7 +423,7 @@
         };
 
         window.removeExpense = async (id) => {
-            const docRef = doc(db, 'artifacts', appId, 'public', 'data', `expenses_${activeWeekKey}`, id);
+            const docRef = doc(db, 'artifacts', appId, 'public', 'data', getExpensesColName(activeWeekKey), id);
             await deleteDoc(docRef);
         };
 
@@ -450,12 +432,16 @@
         };
 
         function syncInputsToState() {
-            document.getElementById('bankBalanceInput').value = bankBalance > 0 ? bankBalance : '';
+            const balanceInput = document.getElementById('bankBalanceInput');
+            if (balanceInput) {
+                balanceInput.value = bankBalance > 0 ? bankBalance : '';
+            }
             refreshRevenueFields();
         }
 
         function renderExpenseLedger() {
             const list = document.getElementById('expenseList');
+            if (!list) return;
             if (expensesData.length === 0) {
                 list.innerHTML = `<div class="py-12 text-center text-[10px] font-black text-slate-300 uppercase tracking-widest">No Disbursements Record</div>`;
                 return;
@@ -493,16 +479,60 @@
             const totalExp = expensesData.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
             const netFlow = totalInc - totalExp;
 
-            document.getElementById('totalIncDisplay').innerText = `$${totalInc.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-            document.getElementById('totalExpDisplay').innerText = `$${totalExp.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-            document.getElementById('netCashDisplay').innerText = `$${netFlow.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+            const incEl = document.getElementById('totalIncDisplay');
+            const expEl = document.getElementById('totalExpDisplay');
+            const netEl = document.getElementById('netCashDisplay');
+
+            if (incEl) incEl.innerText = `$${totalInc.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+            if (expEl) expEl.innerText = `$${totalExp.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+            if (netEl) netEl.innerText = `$${netFlow.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
         }
+
+        async function initApp() {
+            renderStaticSelectors();
+            const initialWeek = generateWeeks();
+            updateStatus("Connecting to Database...", "bg-amber-400 animate-pulse");
+
+            try {
+                // RULE 3: Secure token priority check BEFORE listeners run
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    try {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                        console.log("Successfully authenticated with Workspace Custom Token.");
+                    } catch (customTokenError) {
+                        console.warn("Workspace Custom Token failed. Falling back to Anonymous Auth:", customTokenError);
+                        await signInAnonymously(auth);
+                    }
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (authError) {
+                console.error("Authentication Handshake Failed:", authError);
+                updateStatus("Offline Session", "bg-slate-400");
+                loadWeekData(activeWeekKey || initialWeek); // local state fallback
+                return;
+            }
+
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    updateStatus("Synced & Active", "bg-emerald-500");
+                    const importBtn = document.getElementById('importDataBtn');
+                    if (importBtn) importBtn.classList.remove('hidden');
+                    loadWeekData(activeWeekKey || initialWeek);
+                } else {
+                    updateStatus("Offline Session", "bg-slate-400");
+                }
+            });
+        }
+
+        let unsubscribeIncome = null;
+        let unsubscribeExpenses = null;
 
         // --- AUTOMATED ONE-TIME HISTORICAL SEEDING ENGINE ---
         // Historical sheets dataset mapped strictly from 1/2/2026 to 5/15/2026
         window.runOneTimeDataMigration = async () => {
             if (!auth.currentUser) {
-                alert("Connection is not active yet. Please wait until 'Synced & Active' status is visible.");
+                alert("Database connection is not active yet. Please wait until 'Synced & Active' status is visible.");
                 return;
             }
             if (!confirm("Are you sure you want to seed the database with historical data from Jan 2, 2026, through May 15, 2026? This will overwrite clean records.")) return;
@@ -628,7 +658,7 @@
                     bankBalance: 9641.90,
                     income: {
                         "Sunday": { "Cash/Checks": 1634.55, "Credit/Debit cards": 0.0, "Text": 420.0, "Givelify": 120.0, "Tithely": 51.80, "CashApp": 1340.0, "Zelle": 805.0, "Website giving": 0.0 },
-                        "Tuesday": { "Cash/Checks": 108.0, "Credit/Debit cards": 0.0, "Text": 25.0, "Givelify": 65.0, "Tithely": 0.0, "CashApp": 160.0, "Zelle": 325.0, "Website giving": 0.0 },
+                        "Tuesday": { "Cash/Checks": 108.0, "Credit/Debit cards": 0.0, "Text": 25.0, "Givelify": 65.0, "Tithely": 0.0, "CashApp": 160.0, "Zelle": 325.0, "Website giving text": 0.0 },
                         "End of Week": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 283.0, "Givelify": 150.0, "Tithely": 0.0, "CashApp": 0.0, "Zelle": 1198.41, "Website giving": 0.0 }
                     },
                     expenses: [
@@ -645,7 +675,7 @@
                     bankBalance: 5226.18,
                     income: {
                         "Sunday": { "Cash/Checks": 462.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 25.0, "Tithely": 1300.0, "CashApp": 960.0, "Zelle": 340.0, "Website giving": 0.0 },
-                        "Tuesday": { "Cash/Checks": 170.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 135.0, "Tithely": 0.0, "CashApp": 65.0, "Zelle": 300.0, "Website giving": 0.0 },
+                        "Tuesday": { "Cash/Checks": 170.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 135.0, "Tithely": 0.0, "CashApp": 65.0, "Zelle": 300.0, "Website giving text": 0.0 },
                         "End of Week": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 0.0, "Tithely": 0.0, "CashApp": 150.0, "Zelle": 300.0, "Website giving": 0.0 }
                     },
                     expenses: [
@@ -662,7 +692,7 @@
                     bankBalance: 7374.68,
                     income: {
                         "Sunday": { "Cash/Checks": 665.0, "Credit/Debit cards": 0.0, "Text": 365.0, "Givelify": 0.0, "Tithely": 0.0, "CashApp": 1023.0, "Zelle": 1575.0, "Website giving": 0.0 },
-                        "Tuesday": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 45.0, "Tithely": 0.0, "CashApp": 0.0, "Zelle": 0.0, "Website giving": 0.0 }
+                        "Tuesday": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 45.0, "Tithely": 0.0, "CashApp": 0.0, "Zelle": 0.0, "Website giving text": 0.0 }
                     },
                     expenses: [
                         { category: "Georgia Power", amount: 924.56, day: "Sun" },
@@ -675,7 +705,7 @@
                     bankBalance: 14413.17,
                     income: {
                         "Sunday": { "Cash/Checks": 1146.0, "Credit/Debit cards": 462.0, "Text": 553.0, "Givelify": 1103.39, "Tithely": 1400.0, "CashApp": 1528.0, "Zelle": 1510.0, "Website giving": 0.0 },
-                        "Tuesday": { "Cash/Checks": 70.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 250.0, "Tithely": 110.0, "CashApp": 357.0, "Zelle": 608.33, "Website giving": 0.0 },
+                        "Tuesday": { "Cash/Checks": 70.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 250.0, "Tithely": 110.0, "CashApp": 357.0, "Zelle": 608.33, "Website giving text": 0.0 },
                         "End of Week": { "Cash/Checks": 650.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 488.50, "Tithely": 0.0, "CashApp": 51.0, "Zelle": 300.0, "Website giving": 0.0 },
                         "End of Month": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 477.81, "Tithely": 0.0, "CashApp": 215.0, "Zelle": 0.0, "Website giving": 0.0 }
                     },
@@ -696,7 +726,7 @@
                         "Sunday": { "Cash/Checks": 289.20, "Credit/Debit cards": 0.0, "Text": 140.0, "Givelify": 0.0, "Tithely": 0.0, "CashApp": 375.0, "Zelle": 585.0, "Website giving": 0.0 },
                         "Tuesday": { "Cash/Checks": 140.0, "Credit/Debit cards": 0.0, "Text": 25.0, "Givelify": 255.0, "Tithely": 0.0, "CashApp": 71.0, "Zelle": 0.0, "Website giving text": 0.0 },
                         "End of Week": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 283.0, "Givelify": 246.0, "Tithely": 0.0, "CashApp": 215.0, "Zelle": 1240.0, "Website giving": 0.0 },
-                        "End of Month": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 397.81, "Tithely": 0.0, "CashApp": 0.0, "Zelle": 0.0, "Website giving": 0.0 }
+                        "End of Month": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 397.81, "Tithely": 0.0, "CashApp": 0.0, "Zelle": 0.0, "Website giving text": 0.0 }
                     },
                     expenses: [
                         { category: "Georgia Natural Gas", amount: 265.87, day: "Sun" },
@@ -713,7 +743,7 @@
                     income: {
                         "Sunday": { "Cash/Checks": 1375.0, "Credit/Debit cards": 0.0, "Text": 260.0, "Givelify": 1103.39, "Tithely": 1250.0, "CashApp": 939.0, "Zelle": 600.0, "Website giving": 0.0 },
                         "Tuesday": { "Cash/Checks": 135.0, "Credit/Debit cards": 0.0, "Text": 50.0, "Givelify": 170.0, "Tithely": 51.80, "CashApp": 175.0, "Zelle": 558.33, "Website giving text": 0.0 },
-                        "End of Week": { "Cash/Checks": 30.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 0.0, "Tithely": 0.0, "CashApp": 0.0, "Zelle": 0.0, "Website giving": 0.0 },
+                        "End of Week": { "Cash/Checks": 30.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 0.0, "Tithely": 0.0, "CashApp": 0.0, "Zelle": 0.0, "Website giving text": 0.0 },
                         "End of Month": { "Cash/Checks": 30.0, "Credit/Debit cards": 0.0, "Text": 190.0, "Givelify": 280.0, "Tithely": 0.0, "CashApp": 0.0, "Zelle": 200.0, "Website giving text": 0.0 }
                     },
                     expenses: [
@@ -727,8 +757,8 @@
                     weekKey: "3-27-2026",
                     bankBalance: 7013.92,
                     income: {
-                        "Sunday": { "Cash/Checks": 573.0, "Credit/Debit cards": 0.0, "Text": 190.0, "Givelify": 0.0, "Tithely": 0.0, "CashApp": 1280.0, "Zelle": 425.0, "Website giving": 0.0 },
-                        "Tuesday": { "Cash/Checks": 70.0, "Credit/Debit cards": 0.0, "Text": 25.0, "Givelify": 30.0, "Tithely": 0.0, "CashApp": 51.0, "Zelle": 20.0, "Website giving": 0.0 }
+                        "Sunday": { "Cash/Checks": 573.0, "Credit/Debit cards": 0.0, "Text": 190.0, "Givelify": 0.0, "Tithely": 0.0, "CashApp": 1280.0, "Zelle": 425.0, "Website giving text": 0.0 },
+                        "Tuesday": { "Cash/Checks": 70.0, "Credit/Debit cards": 0.0, "Text": 25.0, "Givelify": 30.0, "Tithely": 0.0, "CashApp": 51.0, "Zelle": 20.0, "Website giving text": 0.0 }
                     },
                     expenses: [
                         { category: "Georgia Power", amount: 667.43, day: "Sun" },
@@ -748,7 +778,7 @@
                     income: {
                         "Sunday": { "Cash/Checks": 567.10, "Credit/Debit cards": 0.0, "Text": 100.0, "Givelify": 0.0, "Tithely": 1400.0, "CashApp": 1032.0, "Zelle": 410.0, "Website giving text": 0.0 },
                         "Tuesday": { "Cash/Checks": 54.0, "Credit/Debit cards": 0.0, "Text": 284.0, "Givelify": 45.0, "Tithely": 26.06, "CashApp": 63.0, "Zelle": 835.0, "Website giving text": 0.0 },
-                        "End of Week": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 704.33, "Tithely": 0.0, "CashApp": 150.0, "Zelle": 200.0, "Website giving": 0.0 }
+                        "End of Week": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 704.33, "Tithely": 0.0, "CashApp": 150.0, "Zelle": 200.0, "Website giving text": 0.0 }
                     },
                     expenses: [
                         { category: "Spectrum (TV, Phone, Internet)", amount: 339.43, day: "Sun" },
@@ -759,10 +789,10 @@
                     weekKey: "4-10-2026",
                     bankBalance: 11105.61,
                     income: {
-                        "Sunday": { "Cash/Checks": 1188.0, "Credit/Debit cards": 502.0, "Text": 230.0, "Givelify": 1103.39, "Tithely": 0.0, "CashApp": 1444.0, "Zelle": 982.50, "Website giving": 0.0 },
+                        "Sunday": { "Cash/Checks": 1188.0, "Credit/Debit cards": 502.0, "Text": 230.0, "Givelify": 1103.39, "Tithely": 0.0, "CashApp": 1444.0, "Zelle": 982.50, "Website giving text": 0.0 },
                         "Tuesday": { "Cash/Checks": 22.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 200.0, "Tithely": 51.80, "CashApp": 5.0, "Zelle": 170.83, "Website giving text": 0.0 },
                         "End of Week": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 40.0, "Givelify": 241.0, "Tithely": 100.0, "CashApp": 110.0, "Zelle": 0.0, "Website giving text": 0.0 },
-                        "End of Month": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 360.81, "Tithely": 0.0, "CashApp": 0.0, "Zelle": 0.0, "Website giving": 0.0 }
+                        "End of Month": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 360.81, "Tithely": 0.0, "CashApp": 0.0, "Zelle": 0.0, "Website giving text": 0.0 }
                     },
                     expenses: [
                         { category: "Mortgage - Kirkland Group", amount: 2018.41, day: "Sun" },
@@ -778,7 +808,7 @@
                     income: {
                         "Sunday": { "Cash/Checks": 802.30, "Credit/Debit cards": 0.0, "Text": 335.0, "Givelify": 0.0, "Tithely": 1350.0, "CashApp": 870.21, "Zelle": 235.0, "Website giving text": 0.0 },
                         "Tuesday": { "Cash/Checks": 205.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 65.0, "Tithely": 0.0, "CashApp": 179.0, "Zelle": 315.0, "Website giving text": 0.0 },
-                        "End of Week": { "Cash/Checks": 50.0, "Credit/Debit cards": 0.0, "Text": 283.0, "Givelify": 6.50, "Tithely": 0.0, "CashApp": 0.0, "Zelle": 0.0, "Website giving": 0.0 }
+                        "End of Week": { "Cash/Checks": 50.0, "Credit/Debit cards": 0.0, "Text": 283.0, "Givelify": 6.50, "Tithely": 0.0, "CashApp": 0.0, "Zelle": 0.0, "Website giving text": 0.0 }
                     },
                     expenses: [
                         { category: "Lady Val Payroll", amount: 1231.60, day: "Sun" },
@@ -794,9 +824,9 @@
                     weekKey: "4-24-2026",
                     bankBalance: 7793.30,
                     income: {
-                        "Sunday": { "Cash/Checks": 527.0, "Credit/Debit cards": 0.0, "Text": 300.0, "Givelify": 0.0, "Tithely": 0.0, "CashApp": 850.0, "Zelle": 1290.0, "Website giving": 0.0 },
+                        "Sunday": { "Cash/Checks": 527.0, "Credit/Debit cards": 0.0, "Text": 300.0, "Givelify": 0.0, "Tithely": 0.0, "CashApp": 850.0, "Zelle": 1290.0, "Website giving text": 0.0 },
                         "Tuesday": { "Cash/Checks": 72.0, "Credit/Debit cards": 0.0, "Text": 140.0, "Givelify": 203.0, "Tithely": 0.0, "CashApp": 0.0, "Zelle": 477.50, "Website giving text": 0.0 },
-                        "End of Week": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 500.0, "Givelify": 557.81, "Tithely": 0.0, "CashApp": 10.0, "Zelle": 0.0, "Website giving": 0.0 }
+                        "End of Week": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 500.0, "Givelify": 557.81, "Tithely": 0.0, "CashApp": 10.0, "Zelle": 0.0, "Website giving text": 0.0 }
                     },
                     expenses: [
                         { category: "Pastor Payroll", amount: 2359.89, day: "Sun" },
@@ -815,7 +845,7 @@
                         "Sunday": { "Cash/Checks": 522.0, "Credit/Debit cards": 0.0, "Text": 250.0, "Givelify": 0.0, "Tithely": 0.0, "CashApp": 1484.0, "Zelle": 615.0, "Website giving text": 0.0 },
                         "Tuesday": { "Cash/Checks": 45.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 135.0, "Tithely": 31.20, "CashApp": 83.0, "Zelle": 190.0, "Website giving text": 0.0 },
                         "End of Week": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 40.0, "Tithely": 110.0, "CashApp": 0.0, "Zelle": 0.0, "Website giving text": 0.0 },
-                        "End of Month": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 284.0, "Givelify": 0.0, "Tithely": 0.0, "CashApp": 695.0, "Zelle": 0.0, "Website giving": 0.0 }
+                        "End of Month": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 284.0, "Givelify": 0.0, "Tithely": 0.0, "CashApp": 695.0, "Zelle": 0.0, "Website giving text": 0.0 }
                     },
                     expenses: [
                         { category: "First Citizens Bank", amount: 184.32, day: "Sun", details: "April copier lease" },
@@ -827,14 +857,14 @@
                     weekKey: "5-8-2026",
                     bankBalance: 11171.52,
                     income: {
-                        "Sunday": { "Cash/Checks": 1170.0, "Credit/Debit cards": 462.0, "Text": 460.0, "Givelify": 0.0, "Tithely": 2000.0, "CashApp": 812.0, "Zelle": 1741.0, "Website giving": 0.0 },
+                        "Sunday": { "Cash/Checks": 1170.0, "Credit/Debit cards": 462.0, "Text": 460.0, "Givelify": 0.0, "Tithely": 2000.0, "CashApp": 812.0, "Zelle": 1741.0, "Website giving text": 0.0 },
                         "Tuesday": { "Cash/Checks": 30.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 537.0, "Tithely": 51.80, "CashApp": 65.0, "Zelle": 145.50, "Website giving text": 0.0 },
                         "End of Week": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 150.0, "Tithely": 0.0, "CashApp": 170.0, "Zelle": 0.0, "Website giving text": 0.0 },
-                        "End of Month": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 357.81, "Tithely": 0.0, "CashApp": 0.0, "Zelle": 0.0, "Website giving": 0.0 }
+                        "End of Month": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 357.81, "Tithely": 0.0, "CashApp": 0.0, "Zelle": 0.0, "Website giving text": 0.0 }
                     },
                     expenses: [
                         { category: "Mortgage - Kirkland Group", amount: 2018.41, day: "Sun" },
-                        { category: "Band Payroll", amount: 2000.0, day: "Sun", details: "March PR1) - includes Corey Davis' final pay (Apr2026PR2" },
+                        { category: "Band Payroll", amount: 2000.0, day: "Sun", details: "March PR1 - includes Corey Davis final pay" },
                         { category: "Guest Speakers", amount: 125.0, day: "Sun", details: "Chelsea Reynolds" },
                         { category: "Other", amount: 150.0, day: "Sun", details: "Kirk Marshall drummer" }
                     ]
@@ -845,7 +875,7 @@
                     income: {
                         "Sunday": { "Cash/Checks": 570.30, "Credit/Debit cards": 0.0, "Text": 195.0, "Givelify": 0.0, "Tithely": 0.0, "CashApp": 717.96, "Zelle": 195.0, "Website giving text": 0.0 },
                         "Tuesday": { "Cash/Checks": 65.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 25.0, "Tithely": 20.91, "CashApp": 0.0, "Zelle": 15.0, "Website giving text": 0.0 },
-                        "End of Week": { "Cash/Checks": 400.0, "Credit/Debit cards": 0.0, "Text": 311.27, "Givelify": 321.0, "Tithely": 0.0, "CashApp": 100.0, "Zelle": 150.0, "Website giving": 0.0 }
+                        "End of Week": { "Cash/Checks": 400.0, "Credit/Debit cards": 0.0, "Text": 311.27, "Givelify": 321.0, "Tithely": 0.0, "CashApp": 100.0, "Zelle": 150.0, "Website giving text": 0.0 }
                     },
                     expenses: [
                         { category: "Guest Speakers", amount: 175.0, day: "Sun", details: "Will Rhodes" },
@@ -867,7 +897,7 @@
                     });
 
                     // Seed Expenses under compliant flat path structure (RULE 1)
-                    const expensesColRef = collection(db, 'artifacts', appId, 'public', 'data', `expenses_${item.weekKey}`);
+                    const expensesColRef = collection(db, 'artifacts', appId, 'public', 'data', getExpensesColName(item.weekKey));
                     
                     for (const exp of item.expenses) {
                         const expId = Math.random().toString(36).substring(2, 15);
@@ -895,7 +925,8 @@
             }
         };
 
-        window.onload = initApp;
+        // Initialize immediately
+        initApp();
     </script>
 </body>
 </html>

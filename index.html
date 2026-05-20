@@ -3,186 +3,180 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Church Financial Management</title>
+    <title>Voices South - Weekly Income and Payables</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+    
     <!-- Firebase SDKs -->
     <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
     <style>
         :root {
-            --primary: #1e40af;
-            --secondary: #64748b;
-            --accent: #4f46e5;
+            --primary: #4f46e5;
+            --emerald: #10b981;
+            --rose: #f43f5e;
         }
         body {
             background-color: #f8fafc;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-family: 'Inter', sans-serif;
+            -webkit-tap-highlight-color: transparent;
         }
-        .glass-card {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(226, 232, 240, 0.8);
-            border-radius: 24px;
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
         }
-        .input-group label {
-            display: block;
-            font-size: 0.75rem;
-            font-weight: 800;
-            color: #64748b;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            margin-bottom: 0.5rem;
-            padding-left: 0.25rem;
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
         }
-        .input-style {
-            width: 100%;
-            padding: 1rem;
-            background-color: #f1f5f9;
-            border: 2px solid transparent;
-            border-radius: 16px;
-            font-weight: 600;
-            color: #1e293b;
-            transition: all 0.2s;
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 10px;
         }
-        .input-style:focus {
-            outline: none;
-            background-color: white;
-            border-color: var(--primary);
-            box-shadow: 0 0 0 4px rgba(30, 64, 175, 0.1);
-        }
-        .btn-submit {
-            background: linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%);
-            color: white;
-            width: 100%;
-            padding: 1.25rem;
-            border-radius: 18px;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: 0.025em;
-            box-shadow: 0 4px 12px rgba(30, 64, 175, 0.2);
-            transition: all 0.2s;
-        }
-        .btn-submit:active {
-            transform: scale(0.98);
-        }
-        .hidden { display: none; }
-        .animate-in { animation: slideIn 0.3s ease-out forwards; }
-        @keyframes slideIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
+        input::-webkit-outer-spin-button,
+        input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
         }
     </style>
 </head>
-<body class="p-4 md:p-10 flex flex-col items-center min-h-screen">
+<body class="text-slate-900 min-h-screen pb-24">
 
-    <div class="w-full max-w-xl space-y-8">
-        <!-- Brand Header -->
-        <header class="flex items-center justify-between px-2">
-            <div class="flex items-center gap-3">
-                <div class="bg-blue-600 p-2.5 rounded-2xl shadow-lg shadow-blue-200">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
+    <!-- Header Section -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-50 px-6 py-4">
+        <div class="max-w-6xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
+            <div class="flex items-center gap-4">
+                <div class="bg-indigo-600 p-3 rounded-2xl text-white shadow-lg shadow-indigo-100">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
                 </div>
                 <div>
-                    <h1 class="text-xl font-black text-slate-800 tracking-tight">Finance Portal</h1>
-                    <p id="connectionStatus" class="text-[10px] font-bold text-amber-500 uppercase tracking-widest flex items-center gap-1">
-                        <span class="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse"></span> Offline Mode
-                    </p>
-                </div>
-            </div>
-            <div id="dateDisplay" class="text-right">
-                <p class="text-xs font-black text-slate-400 uppercase">System Date</p>
-                <p class="text-sm font-bold text-slate-700">Loading...</p>
-            </div>
-        </header>
-
-        <!-- Main Entry Card -->
-        <div class="glass-card p-8">
-            <form id="expenseForm" class="space-y-6">
-                
-                <div class="input-group">
-                    <label>Select Category</label>
-                    <select id="category" required class="input-style" onchange="handleCategoryChange()">
-                        <option value="">Choose Category...</option>
-                        <optgroup label="Payroll & Personnel">
-                            <option value="Pastor Payroll">Pastor Payroll</option>
-                            <option value="Lady Val Payroll">Lady Val Payroll</option>
-                            <option value="Band Payroll">Band Payroll</option>
-                        </optgroup>
-                        <optgroup label="Fixed Costs & Banking">
-                            <option value="Mortgage">Mortgage</option>
-                            <option value="First Citizens Bank">First Citizens Bank</option>
-                            <option value="Kaiser Permanente">Kaiser Permanente</option>
-                        </optgroup>
-                        <optgroup label="Utilities & Services">
-                            <option value="Georgia Power">Georgia Power</option>
-                            <option value="Water Authority">Water Authority</option>
-                            <option value="T-Mobile">T-Mobile</option>
-                            <option value="Spectrum">Spectrum</option>
-                        </optgroup>
-                        <optgroup label="Other Operations">
-                            <option value="Guest Speakers">Guest Speakers</option>
-                            <option value="Maintenance">Maintenance</option>
-                            <option value="Supplies">Supplies</option>
-                            <option value="Other">Other</option>
-                        </optgroup>
-                    </select>
-                </div>
-
-                <!-- Conditional Information Box -->
-                <div id="infoWrapper" class="hidden animate-in">
-                    <div class="input-group">
-                        <label id="infoLabel">Additional Information</label>
-                        <input type="text" id="infoDetail" placeholder="Enter details..." class="input-style">
+                    <h1 class="text-lg font-black tracking-tight text-slate-900 leading-none">Voices South Portal</h1>
+                    <div class="flex items-center gap-2 mt-1.5">
+                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Reporting Period:</span>
+                        <select id="weekSelector" onchange="changeWeek(this.value)" class="bg-transparent text-[10px] font-black text-indigo-600 uppercase tracking-widest outline-none border-none p-0 cursor-pointer focus:ring-0">
+                            <option>Loading weeks...</option>
+                        </select>
                     </div>
                 </div>
-
-                <div class="input-group">
-                    <label>Transaction Amount ($)</label>
-                    <div class="relative">
-                        <span class="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-slate-400">$</span>
-                        <input type="number" id="amount" step="0.01" required placeholder="0.00" class="input-style pl-8">
-                    </div>
-                </div>
-
-                <div class="input-group">
-                    <label>Transaction Date</label>
-                    <input type="date" id="txnDate" required class="input-style">
-                </div>
-
-                <button type="submit" id="submitBtn" class="btn-submit">
-                    Record Expense
-                </button>
-            </form>
-        </div>
-
-        <!-- Feedback UI -->
-        <div id="successMsg" class="hidden bg-emerald-500 text-white p-4 rounded-2xl text-center font-bold text-sm animate-in shadow-lg">
-            ✓ Entry successfully synced to cloud
-        </div>
-
-        <!-- Recent Entries Log -->
-        <section class="space-y-4">
-            <div class="flex items-center justify-between px-2">
-                <h2 class="text-xs font-black text-slate-400 uppercase tracking-widest">Recent Activity</h2>
-                <button onclick="clearLocalLogs()" class="text-[10px] font-bold text-slate-300 hover:text-rose-400 uppercase">Clear View</button>
             </div>
             
-            <div id="logContainer" class="space-y-3 pb-20">
-                <!-- Log Items injected here -->
-                <div class="text-center py-10 opacity-30">
-                    <p class="text-sm font-bold text-slate-400 uppercase tracking-widest">No entries recorded today</p>
+            <div class="flex items-center gap-3">
+                <div class="flex items-center gap-2.5 px-4 py-2 bg-slate-50 border border-slate-100 rounded-2xl">
+                    <div id="statusDot" class="w-2 h-2 bg-amber-500 rounded-full animate-pulse"></div>
+                    <span id="statusText" class="text-[9px] font-black text-slate-500 uppercase tracking-widest">Connecting...</span>
                 </div>
             </div>
-        </section>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto p-6 md:p-10 space-y-10">
+        
+        <!-- Summary Tiles matching Sheet Totals structure -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div class="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm">
+                <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Weekly Receipts</p>
+                <p id="totalIncDisplay" class="text-3xl font-black text-emerald-600">$0.00</p>
+            </div>
+            <div class="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm">
+                <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Weekly Payables</p>
+                <p id="totalExpDisplay" class="text-3xl font-black text-slate-900">$0.00</p>
+            </div>
+            <div class="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm">
+                <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Net Flow Balance</p>
+                <p id="netCashDisplay" class="text-3xl font-black text-indigo-600">$0.00</p>
+            </div>
+            <div class="bg-indigo-600 p-6 rounded-[2rem] shadow-xl shadow-indigo-100 text-white">
+                <p class="text-[10px] font-black text-indigo-200 uppercase tracking-widest mb-1">Bank Statement Balance</p>
+                <div class="flex items-center gap-1 mt-1">
+                    <span class="text-lg font-bold">$</span>
+                    <input type="number" step="0.01" id="bankBalanceInput" onchange="saveBankBalance(this.value)" placeholder="0.00" class="bg-transparent text-2xl font-black text-white outline-none border-b border-white/20 focus:border-white w-full">
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-10">
+            
+            <!-- Revenue Entry Form -->
+            <section class="lg:col-span-5 bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm">
+                <div class="flex items-center justify-between mb-8">
+                    <div>
+                        <h2 class="text-xs font-black text-slate-900 uppercase tracking-widest">Revenue Entry Channels</h2>
+                        <p class="text-[10px] font-semibold text-slate-400 mt-0.5">Categorized per day/source</p>
+                    </div>
+                    <div class="bg-slate-50 px-3 py-1 border border-slate-100 rounded-xl flex items-center gap-1">
+                        <label class="text-[10px] font-bold text-slate-500 uppercase">Day:</label>
+                        <select id="revenueDay" onchange="refreshRevenueFields()" class="bg-transparent text-[10px] font-black text-indigo-600 outline-none cursor-pointer">
+                            <option value="Sunday">Sunday (Sun)</option>
+                            <option value="Tuesday">Tuesday (Tue)</option>
+                            <option value="End of Week">End of Week</option>
+                            <option value="End of Month">End of Month</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div id="incomeFields" class="space-y-1">
+                    <!-- Fields dynamically loaded -->
+                </div>
+            </section>
+
+            <!-- Payables / Expenses Column -->
+            <section class="lg:col-span-7 space-y-10">
+                <!-- Entry Form -->
+                <div class="bg-slate-900 p-8 md:p-10 rounded-[2.5rem] text-white shadow-2xl">
+                    <h2 class="text-xs font-black uppercase tracking-widest mb-6 text-slate-400">Log Payable Entry</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-12 gap-4">
+                        <div class="md:col-span-5">
+                            <select id="expenseCategory" onchange="handleCategoryChange()" class="w-full bg-white/5 border border-white/10 p-4 rounded-xl text-xs font-bold text-white outline-none focus:ring-2 ring-indigo-500/50 cursor-pointer">
+                                <!-- Populated dynamically -->
+                            </select>
+                        </div>
+                        <div class="md:col-span-4">
+                            <input type="number" id="expenseAmount" placeholder="0.00" class="w-full bg-white/5 border border-white/10 p-4 rounded-xl text-xs font-bold outline-none focus:ring-2 ring-indigo-500/50 text-white">
+                        </div>
+                        <div class="md:col-span-3">
+                            <select id="expenseDay" class="w-full bg-white/5 border border-white/10 p-4 rounded-xl text-xs font-bold text-white outline-none focus:ring-2 ring-indigo-500/50 cursor-pointer">
+                                <option value="Sun" class="text-slate-800">Sun</option>
+                                <option value="Tue" class="text-slate-800">Tue</option>
+                                <option value="End of Week" class="text-slate-800">End of Week</option>
+                                <option value="End of Month" class="text-slate-800">End of Month</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Dynamic Details Input (Conditional) -->
+                    <div id="additionalDetailsWrapper" class="mt-4 hidden">
+                        <input type="text" id="expenseDetail" placeholder="Enter Speaker Name, Specific Item, or Special Event notes" class="w-full bg-white/5 border border-white/10 p-4 rounded-xl text-xs font-semibold outline-none focus:ring-2 ring-indigo-500/50 text-white placeholder-slate-500">
+                    </div>
+
+                    <button onclick="addExpense()" class="mt-6 w-full py-4 bg-indigo-500 hover:bg-indigo-400 text-white rounded-xl font-black text-xs uppercase tracking-widest transition-all active:scale-95 shadow-lg shadow-indigo-500/10">
+                        Record Payable Entry
+                    </button>
+                </div>
+
+                <!-- Ledger list representation matching sheets -->
+                <div class="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-xs font-black text-slate-400 uppercase tracking-widest">Payable Statement</h2>
+                        <span class="text-[9px] font-bold text-slate-300 uppercase tracking-wider">Current Period Log</span>
+                    </div>
+                    <div id="expenseList" class="space-y-3 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
+                        <!-- Ledger cards loaded here -->
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Footer Summary report generation -->
+    <div class="fixed bottom-8 left-1/2 -translate-x-1/2 w-full max-w-sm px-6 no-print">
+        <button onclick="window.print()" class="w-full bg-slate-900 hover:bg-black text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-[0.25em] shadow-2xl transition-all active:scale-95 flex items-center justify-center gap-3">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+            Print Summary Ledger
+        </button>
     </div>
 
-    <!-- Firebase Integration Logic -->
-    <script>
-        // REPLACE WITH YOUR ACTUAL CONFIG FROM PREVIOUS VERSION IF AVAILABLE
+    <!-- Application Script Engine -->
+    <script type="module">
+        // Firebase initialization configuration block
         const firebaseConfig = {
             apiKey: "AIzaSyDb6oFZEStklFT_Dt2riDbQC_IJPHcT304",
             authDomain: "church-finance-dashboard-40dca.firebaseapp.com",
@@ -197,125 +191,290 @@
         const auth = firebase.auth();
         const appId = "church-finance-dashboard-40dca";
 
-        // State Management
-        let isConnected = false;
+        // Category configurations matching exact sheet values
+        const incomeCats = [
+            'Cash/Checks', 
+            'Credit/Debit cards', 
+            'Text', 
+            'Givelify', 
+            'Tithely', 
+            'CashApp', 
+            'Zelle', 
+            'Website giving'
+        ];
 
-        // Initialize App
-        window.onload = () => {
-            document.getElementById('txnDate').valueAsDate = new Date();
-            updateHeaderDate();
+        const expenseCats = [
+            'Lady Val Payroll',
+            'Pastor Payroll',
+            'Mortgage - Kirkland Group',
+            'Admin Payroll Taxes and fees',
+            'Band Payroll',
+            'Pastor Love offerings',
+            'Georgia Power',
+            'Georgia Natural Gas',
+            'Spectrum (TV, Phone, Internet)',
+            'Henry County Water Authority',
+            'TMobile',
+            'Kaiser Permanente',
+            'GFL Environmental',
+            'Ministry Design',
+            'Quickbooks',
+            'Team Pest USA',
+            'First Citizens Bank',
+            'Guest Speakers',
+            'Other'
+        ];
+
+        // Anchor Timeline configuration: Every Friday starting from Jan 2, 2026
+        const ANCHOR_DATE = new Date(2026, 0, 2); 
+        let activeWeekKey = '';
+        let incomeData = {}; // Structured by Day -> Category -> value
+        let expensesData = [];
+        let bankBalance = 0;
+
+        function updateStatus(text, colorClass) {
+            const dot = document.getElementById('statusDot');
+            const label = document.getElementById('statusText');
+            if (dot && label) {
+                dot.className = `w-2 h-2 rounded-full ${colorClass}`;
+                label.innerText = text;
+            }
+        }
+
+        // Build 12 weeks selector list starting from anchor
+        function generateWeeks() {
+            const select = document.getElementById('weekSelector');
+            select.innerHTML = '';
             
-            auth.signInAnonymously().then(() => {
-                isConnected = true;
-                const status = document.getElementById('connectionStatus');
-                status.innerHTML = '<span class="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span> Live Cloud Sync';
-                status.className = "text-[10px] font-bold text-emerald-600 uppercase tracking-widest flex items-center gap-1";
-                loadRecentEntries();
-            }).catch(err => {
-                console.error("Auth error:", err);
+            const limit = new Date();
+            limit.setDate(limit.getDate() + 21); // Include upcoming periods
+
+            let current = new Date(ANCHOR_DATE);
+            const weeks = [];
+            while (current <= limit) {
+                const key = `${current.getMonth() + 1}-${current.getDate()}-${current.getFullYear()}`;
+                weeks.unshift(key); // descending
+                current.setDate(current.getDate() + 7);
+            }
+
+            weeks.forEach(key => {
+                const opt = document.createElement('option');
+                opt.value = key;
+                opt.innerText = `Week of ${key}`;
+                select.appendChild(opt);
             });
+
+            activeWeekKey = weeks[0];
+            return weeks[0];
+        }
+
+        function initApp() {
+            renderStaticSelectors();
+            const initialWeek = generateWeeks();
+            updateStatus("Connecting...", "bg-amber-400 animate-pulse");
+
+            auth.signInAnonymously().then(() => {
+                updateStatus("Synced & Active", "bg-emerald-500");
+                loadWeekData(activeWeekKey || initialWeek);
+            }).catch(err => {
+                console.error("Auth Handshake Failed:", err);
+                updateStatus("Offline Session", "bg-slate-400");
+                loadWeekData(activeWeekKey || initialWeek); // local/fallback engagement
+            });
+        }
+
+        let unsubscribeIncome = null;
+        let unsubscribeExpenses = null;
+
+        function loadWeekData(weekKey) {
+            activeWeekKey = weekKey;
+            
+            if (unsubscribeIncome) unsubscribeIncome();
+            if (unsubscribeExpenses) unsubscribeExpenses();
+
+            // Strict compliance path for church records: artifacts/{appId}/public/data/...
+            const incomeDocRef = db.collection('artifacts').doc(appId).collection('public').doc('data')
+                                  .collection('income_summaries').doc(weekKey);
+            const expensesColRef = db.collection('artifacts').doc(appId).collection('public').doc('data')
+                                    .collection('weekly_payables').doc(weekKey).collection('expenses');
+
+            // Listen for Income Summaries
+            unsubscribeIncome = incomeDocRef.onSnapshot((docSnap) => {
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    incomeData = data.income || {};
+                    bankBalance = data.bankBalance || 0;
+                } else {
+                    incomeData = {};
+                    bankBalance = 0;
+                }
+                syncInputsToState();
+                calculateAndRefreshUI();
+            });
+
+            // Listen for Expenses Log
+            unsubscribeExpenses = expensesColRef.onSnapshot((colSnap) => {
+                expensesData = colSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                renderExpenseLedger();
+                calculateAndRefreshUI();
+            });
+        }
+
+        function renderStaticSelectors() {
+            const expSelect = document.getElementById('expenseCategory');
+            expSelect.innerHTML = `<option value="" disabled selected>Choose Category</option>` +
+                expenseCats.map(cat => `<option value="${cat}" class="text-slate-900">${cat}</option>`).join('');
+            
+            refreshRevenueFields();
+        }
+
+        window.refreshRevenueFields = () => {
+            const currentDay = document.getElementById('revenueDay').value;
+            const container = document.getElementById('incomeFields');
+            
+            container.innerHTML = incomeCats.map(cat => {
+                const value = (incomeData[currentDay] && incomeData[currentDay][cat]) ? incomeData[currentDay][cat] : '';
+                return `
+                    <div class="flex justify-between items-center py-3.5 border-b border-slate-50 last:border-0">
+                        <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">${cat}</label>
+                        <div class="flex items-center gap-1">
+                            <span class="text-slate-300 font-bold">$</span>
+                            <input type="number" step="0.01" data-cat="${cat}" value="${value}" onchange="saveIncomeValue('${cat}', this.value)" 
+                            placeholder="0.00" class="income-input w-28 text-right font-black text-slate-800 outline-none bg-slate-50 focus:bg-indigo-50/50 rounded-xl p-1.5 transition-all">
+                        </div>
+                    </div>
+                `;
+            }).join('');
         };
 
-        function updateHeaderDate() {
-            const options = { month: 'short', day: 'numeric', year: 'numeric' };
-            document.querySelector('#dateDisplay p:last-child').innerText = new Date().toLocaleDateString('en-US', options);
-        }
+        window.saveIncomeValue = async (cat, val) => {
+            const day = document.getElementById('revenueDay').value;
+            const numeric = parseFloat(val) || 0;
+            
+            if (!incomeData[day]) incomeData[day] = {};
+            incomeData[day][cat] = numeric;
 
-        function handleCategoryChange() {
-            const cat = document.getElementById('category').value;
-            const wrapper = document.getElementById('infoWrapper');
-            const label = document.getElementById('infoLabel');
-            const input = document.getElementById('infoDetail');
+            calculateAndRefreshUI();
 
-            if (cat === 'Guest Speakers' || cat === 'Other') {
+            const docRef = db.collection('artifacts').doc(appId).collection('public').doc('data')
+                             .collection('income_summaries').doc(activeWeekKey);
+            await docRef.set({ income: incomeData }, { merge: true });
+        };
+
+        window.saveBankBalance = async (val) => {
+            bankBalance = parseFloat(val) || 0;
+            calculateAndRefreshUI();
+
+            const docRef = db.collection('artifacts').doc(appId).collection('public').doc('data')
+                             .collection('income_summaries').doc(activeWeekKey);
+            await docRef.set({ bankBalance }, { merge: true });
+        };
+
+        window.handleCategoryChange = () => {
+            const category = document.getElementById('expenseCategory').value;
+            const wrapper = document.getElementById('additionalDetailsWrapper');
+            const detailInput = document.getElementById('expenseDetail');
+
+            if (category === 'Guest Speakers' || category === 'Other') {
                 wrapper.classList.remove('hidden');
-                input.required = true;
-                label.innerText = cat === 'Guest Speakers' ? "Speaker's Name" : "Specify Expense";
-                input.placeholder = cat === 'Guest Speakers' ? "e.g. Pastor John Doe" : "e.g. Office Chairs";
+                detailInput.placeholder = category === 'Guest Speakers' ? "e.g., Will Rhodes (Guest Psalmist - Sunday)" : "e.g., Office printing checks, qty 50";
             } else {
                 wrapper.classList.add('hidden');
-                input.required = false;
-                input.value = "";
+                detailInput.value = '';
             }
-        }
+        };
 
-        document.getElementById('expenseForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const btn = document.getElementById('submitBtn');
-            const originalText = btn.innerText;
-            
-            btn.innerText = "Syncing...";
-            btn.disabled = true;
+        window.addExpense = async () => {
+            const cat = document.getElementById('expenseCategory').value;
+            const amtInput = document.getElementById('expenseAmount');
+            const amt = parseFloat(amtInput.value) || 0;
+            const day = document.getElementById('expenseDay').value;
+            const details = document.getElementById('expenseDetail').value.trim();
 
-            const entry = {
-                category: document.getElementById('category').value,
-                amount: parseFloat(document.getElementById('amount').value),
-                date: document.getElementById('txnDate').value,
-                info: document.getElementById('infoDetail').value,
-                timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            if (!cat || amt <= 0) return;
+
+            const id = Date.now().toString();
+            const expenseItem = {
+                id,
+                category: cat,
+                amount: amt,
+                day,
+                details: details || '',
+                timestamp: new Date().toISOString()
             };
 
-            try {
-                // Determine target week for storage
-                const d = new Date(entry.date);
-                const weekKey = `${d.getMonth() + 1}-${d.getDate()}-${d.getFullYear()}`;
-                
-                await db.collection('artifacts').doc(appId).collection('public').doc('data')
-                        .collection('finance_entries').doc(weekKey).collection('expenses').add(entry);
+            const expensesColRef = db.collection('artifacts').doc(appId).collection('public').doc('data')
+                                    .collection('weekly_payables').doc(activeWeekKey).collection('expenses');
+            
+            await expensesColRef.doc(id).set(expenseItem);
 
-                showSuccess();
-                addToLocalLog(entry);
-                e.target.reset();
-                handleCategoryChange();
-                document.getElementById('txnDate').valueAsDate = new Date();
-            } catch (err) {
-                alert("Storage error: " + err.message);
-            } finally {
-                btn.innerText = originalText;
-                btn.disabled = false;
+            // clear input form
+            amtInput.value = '';
+            document.getElementById('expenseCategory').value = '';
+            document.getElementById('expenseDetail').value = '';
+            document.getElementById('additionalDetailsWrapper').classList.add('hidden');
+        };
+
+        window.removeExpense = async (id) => {
+            const docRef = db.collection('artifacts').doc(appId).collection('public').doc('data')
+                             .collection('weekly_payables').doc(activeWeekKey).collection('expenses').doc(id);
+            await docRef.delete();
+        };
+
+        window.changeWeek = (weekKey) => {
+            loadWeekData(weekKey);
+        };
+
+        function syncInputsToState() {
+            document.getElementById('bankBalanceInput').value = bankBalance > 0 ? bankBalance : '';
+            refreshRevenueFields();
+        }
+
+        function renderExpenseLedger() {
+            const list = document.getElementById('expenseList');
+            if (expensesData.length === 0) {
+                list.innerHTML = `<div class="py-12 text-center text-[10px] font-black text-slate-300 uppercase tracking-widest">No Disbursements Record</div>`;
+                return;
             }
-        });
 
-        function showSuccess() {
-            const msg = document.getElementById('successMsg');
-            msg.classList.remove('hidden');
-            setTimeout(() => msg.classList.add('hidden'), 3000);
-        }
-
-        function addToLocalLog(entry) {
-            const container = document.getElementById('logContainer');
-            if (container.querySelector('.opacity-30')) container.innerHTML = '';
-
-            const div = document.createElement('div');
-            div.className = "glass-card p-5 flex justify-between items-center animate-in";
-            
-            const detailHtml = entry.info ? `<p class="text-[10px] font-bold text-blue-500 mt-1">Note: ${entry.info}</p>` : '';
-            
-            div.innerHTML = `
-                <div class="flex flex-col">
-                    <span class="text-sm font-black text-slate-700">${entry.category}</span>
-                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">${entry.date}</span>
-                    ${detailHtml}
+            list.innerHTML = expensesData.map(exp => `
+                <div class="flex justify-between items-center p-4 bg-slate-50 border border-slate-100 rounded-2xl">
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-[11px] font-black text-slate-800 uppercase leading-none">${exp.category}</span>
+                            <span class="text-[8px] bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded font-black uppercase tracking-tight">${exp.day}</span>
+                        </div>
+                        ${exp.details ? `<p class="text-[10px] font-semibold text-indigo-500 mt-1.5 leading-none">Note: ${exp.details}</p>` : ''}
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <span class="font-black text-rose-500 text-sm">-$${exp.amount.toFixed(2)}</span>
+                        <button onclick="removeExpense('${exp.id}')" class="text-slate-200 hover:text-rose-600 transition-colors">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                        </button>
+                    </div>
                 </div>
-                <div class="text-right">
-                    <span class="text-lg font-black text-rose-500">-$${entry.amount.toFixed(2)}</span>
-                </div>
-            `;
-            container.prepend(div);
+            `).join('');
         }
 
-        function clearLocalLogs() {
-            document.getElementById('logContainer').innerHTML = `
-                <div class="text-center py-10 opacity-30">
-                    <p class="text-sm font-bold text-slate-400 uppercase tracking-widest">History cleared from view</p>
-                </div>
-            `;
+        function calculateAndRefreshUI() {
+            // Calculate Total Income (reaches across all week days)
+            let totalInc = 0;
+            Object.keys(incomeData).forEach(day => {
+                Object.values(incomeData[day] || {}).forEach(val => {
+                    totalInc += (parseFloat(val) || 0);
+                });
+            });
+
+            // Calculate Total Payables
+            const totalExp = expensesData.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
+            const netFlow = totalInc - totalExp;
+
+            document.getElementById('totalIncDisplay').innerText = `$${totalInc.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+            document.getElementById('totalExpDisplay').innerText = `$${totalExp.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+            document.getElementById('netCashDisplay').innerText = `$${netFlow.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
         }
 
-        // Mock loader for "Recent Activity" UI feel
-        async function loadRecentEntries() {
-            // In a production app, you'd fetch the last 5 entries from Firestore here.
-        }
+        window.onload = initApp;
     </script>
 </body>
 </html>

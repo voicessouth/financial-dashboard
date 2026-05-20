@@ -179,8 +179,8 @@
 
     <!-- Application Script Engine -->
     <script type="module">
-        // Firebase initialization configuration block
-        const firebaseConfig = {
+        // Firebase initialization configuration block - dynamically resolved to comply with environment sandbox rules
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
             apiKey: "AIzaSyDb6oFZEStklFT_Dt2riDbQC_IJPHcT304",
             authDomain: "church-finance-dashboard-40dca.firebaseapp.com",
             projectId: "church-finance-dashboard-40dca",
@@ -192,7 +192,9 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
         const auth = firebase.auth();
-        const appId = "church-finance-dashboard-40dca";
+        
+        // RULE 1: Standard appId lookup to match exact security paths inside preview environments
+        const appId = typeof __app_id !== 'undefined' ? __app_id : "church-finance-dashboard-40dca";
 
         // Category configurations matching exact sheet values
         const incomeCats = [
@@ -316,6 +318,8 @@
                 }
                 syncInputsToState();
                 calculateAndRefreshUI();
+            }, (err) => {
+                console.error("Income sync error:", err);
             });
 
             // Listen for Expenses Log
@@ -323,6 +327,8 @@
                 expensesData = colSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 renderExpenseLedger();
                 calculateAndRefreshUI();
+            }, (err) => {
+                console.error("Expense sync error:", err);
             });
         }
 
@@ -483,6 +489,10 @@
         // --- AUTOMATED ONE-TIME HISTORICAL SEEDING ENGINE ---
         // Historical sheets dataset mapped strictly from 1/2/2026 to 5/15/2026
         window.runOneTimeDataMigration = async () => {
+            if (!auth.currentUser) {
+                alert("Connection is not active yet. Please wait until 'Synced & Active' status is visible.");
+                return;
+            }
             if (!confirm("Are you sure you want to seed the database with historical data from Jan 2, 2026, through May 15, 2026? This will overwrite clean records.")) return;
             
             updateStatus("Migrating...", "bg-amber-500 animate-pulse");
@@ -632,7 +642,7 @@
                         { category: "Guest Speakers", amount: 175.0, day: "Sun", details: "Will Rhodes" },
                         { category: "Other", amount: 400.0, day: "Sun", details: "Val Murkison Birthday love offering" },
                         { category: "Other", amount: 32.0, day: "Sun", details: "Dontrell Dunn Tools" },
-                        { category: "Other", amount: 72.87, day: "Sun", details: "Amazon livestream cables" }
+                        { category: "Other", amount: 72.87, day: "Sun", details: "Amazon livestream supplies" }
                     ]
                 },
                 {
@@ -812,7 +822,7 @@
                     },
                     expenses: [
                         { category: "Mortgage - Kirkland Group", amount: 2018.41, day: "Sun" },
-                        { category: "Band Payroll", amount: 2000.0, day: "Sun", details: "March PR1 & Corey Davis" },
+                        { category: "Band Payroll", amount: 2000.0, day: "Sun", details: "March PR1) - includes Corey Davis' final pay (Apr2026PR2" },
                         { category: "Guest Speakers", amount: 125.0, day: "Sun", details: "Chelsea Reynolds" },
                         { category: "Other", amount: 150.0, day: "Sun", details: "Kirk Marshall drummer" }
                     ]

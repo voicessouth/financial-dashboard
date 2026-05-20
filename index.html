@@ -244,7 +244,7 @@
             }
         }
 
-        // Build 12 weeks selector list starting from anchor
+        // Build weeks selector list starting from anchor
         function generateWeeks() {
             const select = document.getElementById('weekSelector');
             select.innerHTML = '';
@@ -299,8 +299,10 @@
             // Strict compliance path for church records: artifacts/{appId}/public/data/...
             const incomeDocRef = db.collection('artifacts').doc(appId).collection('public').doc('data')
                                   .collection('income_summaries').doc(weekKey);
+            
+            // FLATTENED collection hierarchy strictly conforming to RULE 1
             const expensesColRef = db.collection('artifacts').doc(appId).collection('public').doc('data')
-                                    .collection('weekly_payables').doc(weekKey).collection('expenses');
+                                    .collection(`expenses_${weekKey}`);
 
             // Listen for Income Summaries
             unsubscribeIncome = incomeDocRef.onSnapshot((docSnap) => {
@@ -408,7 +410,7 @@
             };
 
             const expensesColRef = db.collection('artifacts').doc(appId).collection('public').doc('data')
-                                    .collection('weekly_payables').doc(activeWeekKey).collection('expenses');
+                                    .collection(`expenses_${activeWeekKey}`);
             
             await expensesColRef.doc(id).set(expenseItem);
 
@@ -421,7 +423,7 @@
 
         window.removeExpense = async (id) => {
             const docRef = db.collection('artifacts').doc(appId).collection('public').doc('data')
-                             .collection('weekly_payables').doc(activeWeekKey).collection('expenses').doc(id);
+                             .collection(`expenses_${activeWeekKey}`).doc(id);
             await docRef.delete();
         };
 
@@ -621,7 +623,7 @@
                     bankBalance: 5226.18,
                     income: {
                         "Sunday": { "Cash/Checks": 462.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 25.0, "Tithely": 1300.0, "CashApp": 960.0, "Zelle": 340.0, "Website giving": 0.0 },
-                        "Tuesday": { "Cash/Checks": 170.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 135.0, "Tithely": 0.0, "CashApp": 65.0, "Zelle": 300.0, "Website giving": 0.0 },
+                        "Tuesday": { "Cash/Checks": 170.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 135.0, "Tithely": 0.0, "CashApp": 65.0, "Zelle": 300.0, "Website giving text": 0.0 },
                         "End of Week": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 0.0, "Tithely": 0.0, "CashApp": 150.0, "Zelle": 300.0, "Website giving": 0.0 }
                     },
                     expenses: [
@@ -843,9 +845,9 @@
                         lastUpdated: new Date().toISOString()
                     });
 
-                    // Seed Expenses List
+                    // Seed Expenses List - FLATTENED path format adhering to security rules
                     const expensesColRef = db.collection('artifacts').doc(appId).collection('public').doc('data')
-                                            .collection('weekly_payables').doc(item.weekKey).collection('expenses');
+                                            .collection(`expenses_${item.weekKey}`);
                     
                     for (const exp of item.expenses) {
                         const expId = Math.random().toString(36).substring(2, 15);

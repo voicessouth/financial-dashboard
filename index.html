@@ -7,10 +7,6 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
     
-    <!-- Firebase SDKs -->
-    <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
     <style>
         :root {
             --primary: #4f46e5;
@@ -36,6 +32,11 @@
         input::-webkit-inner-spin-button {
             -webkit-appearance: none;
             margin: 0;
+        }
+        /* Custom high-contrast override for select options to prevent browser/OS text color overrides */
+        select option {
+            color: #0f172a !important; /* text-slate-900 */
+            background-color: #ffffff !important;
         }
     </style>
 </head>
@@ -179,6 +180,10 @@
 
     <!-- Application Script Engine -->
     <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js";
+        import { getFirestore, doc, setDoc, onSnapshot, collection, deleteDoc } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
+
         // Firebase initialization configuration block - dynamically resolved to comply with environment sandbox rules
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
             apiKey: "AIzaSyDb6oFZEStklFT_Dt2riDbQC_IJPHcT304",
@@ -189,9 +194,9 @@
             appId: "1:480863076081:web:dd01f7270a7cd158f93350"
         };
 
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.firestore();
-        const auth = firebase.auth();
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
         
         // RULE 1: Standard appId lookup to match exact security paths inside preview environments
         const appId = typeof __app_id !== 'undefined' ? __app_id : "church-finance-dashboard-40dca";
@@ -273,19 +278,33 @@
             return weeks[0];
         }
 
-        function initApp() {
+        async function initApp() {
             renderStaticSelectors();
             const initialWeek = generateWeeks();
             updateStatus("Connecting...", "bg-amber-400 animate-pulse");
 
-            auth.signInAnonymously().then(() => {
-                updateStatus("Synced & Active", "bg-emerald-500");
-                document.getElementById('importDataBtn').classList.remove('hidden');
-                loadWeekData(activeWeekKey || initialWeek);
-            }).catch(err => {
-                console.error("Auth Handshake Failed:", err);
+            try {
+                // RULE 3: Secure token priority check BEFORE listeners run
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (authError) {
+                console.error("Auth Handshake Failed:", authError);
                 updateStatus("Offline Session", "bg-slate-400");
-                loadWeekData(activeWeekKey || initialWeek); // local/fallback engagement
+                loadWeekData(activeWeekKey || initialWeek); // local/fallback
+                return;
+            }
+
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    updateStatus("Synced & Active", "bg-emerald-500");
+                    document.getElementById('importDataBtn').classList.remove('hidden');
+                    loadWeekData(activeWeekKey || initialWeek);
+                } else {
+                    updateStatus("Offline Session", "bg-slate-400");
+                }
             });
         }
 
@@ -299,15 +318,13 @@
             if (unsubscribeExpenses) unsubscribeExpenses();
 
             // Strict compliance path for church records: artifacts/{appId}/public/data/...
-            const incomeDocRef = db.collection('artifacts').doc(appId).collection('public').doc('data')
-                                  .collection('income_summaries').doc(weekKey);
+            const incomeDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'income_summaries', weekKey);
             
             // FLATTENED collection hierarchy strictly conforming to RULE 1
-            const expensesColRef = db.collection('artifacts').doc(appId).collection('public').doc('data')
-                                    .collection(`expenses_${weekKey}`);
+            const expensesColRef = collection(db, 'artifacts', appId, 'public', 'data', `expenses_${weekKey}`);
 
             // Listen for Income Summaries
-            unsubscribeIncome = incomeDocRef.onSnapshot((docSnap) => {
+            unsubscribeIncome = onSnapshot(incomeDocRef, (docSnap) => {
                 if (docSnap.exists()) {
                     const data = docSnap.data();
                     incomeData = data.income || {};
@@ -323,7 +340,7 @@
             });
 
             // Listen for Expenses Log
-            unsubscribeExpenses = expensesColRef.onSnapshot((colSnap) => {
+            unsubscribeExpenses = onSnapshot(expensesColRef, (colSnap) => {
                 expensesData = colSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 renderExpenseLedger();
                 calculateAndRefreshUI();
@@ -335,7 +352,7 @@
         function renderStaticSelectors() {
             const expSelect = document.getElementById('expenseCategory');
             expSelect.innerHTML = `<option value="" disabled selected>Choose Category</option>` +
-                expenseCats.map(cat => `<option value="${cat}" class="text-slate-900">${cat}</option>`).join('');
+                expenseCats.map(cat => `<option value="${cat}" class="text-slate-900 bg-white">${cat}</option>`).join('');
             
             refreshRevenueFields();
         }
@@ -368,18 +385,16 @@
 
             calculateAndRefreshUI();
 
-            const docRef = db.collection('artifacts').doc(appId).collection('public').doc('data')
-                             .collection('income_summaries').doc(activeWeekKey);
-            await docRef.set({ income: incomeData }, { merge: true });
+            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'income_summaries', activeWeekKey);
+            await setDoc(docRef, { income: incomeData }, { merge: true });
         };
 
         window.saveBankBalance = async (val) => {
             bankBalance = parseFloat(val) || 0;
             calculateAndRefreshUI();
 
-            const docRef = db.collection('artifacts').doc(appId).collection('public').doc('data')
-                             .collection('income_summaries').doc(activeWeekKey);
-            await docRef.set({ bankBalance }, { merge: true });
+            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'income_summaries', activeWeekKey);
+            await setDoc(docRef, { bankBalance }, { merge: true });
         };
 
         window.handleCategoryChange = () => {
@@ -415,10 +430,8 @@
                 timestamp: new Date().toISOString()
             };
 
-            const expensesColRef = db.collection('artifacts').doc(appId).collection('public').doc('data')
-                                    .collection(`expenses_${activeWeekKey}`);
-            
-            await expensesColRef.doc(id).set(expenseItem);
+            const expensesColRef = collection(db, 'artifacts', appId, 'public', 'data', `expenses_${activeWeekKey}`);
+            await setDoc(doc(expensesColRef, id), expenseItem);
 
             // clear input form
             amtInput.value = '';
@@ -428,9 +441,8 @@
         };
 
         window.removeExpense = async (id) => {
-            const docRef = db.collection('artifacts').doc(appId).collection('public').doc('data')
-                             .collection(`expenses_${activeWeekKey}`).doc(id);
-            await docRef.delete();
+            const docRef = doc(db, 'artifacts', appId, 'public', 'data', `expenses_${activeWeekKey}`, id);
+            await deleteDoc(docRef);
         };
 
         window.changeWeek = (weekKey) => {
@@ -616,7 +628,7 @@
                     bankBalance: 9641.90,
                     income: {
                         "Sunday": { "Cash/Checks": 1634.55, "Credit/Debit cards": 0.0, "Text": 420.0, "Givelify": 120.0, "Tithely": 51.80, "CashApp": 1340.0, "Zelle": 805.0, "Website giving": 0.0 },
-                        "Tuesday": { "Cash/Checks": 108.0, "Credit/Debit cards": 0.0, "Text": 25.0, "Givelify": 65.0, "Tithely": 0.0, "CashApp": 160.0, "Zelle": 325.0, "Website giving text": 0.0 },
+                        "Tuesday": { "Cash/Checks": 108.0, "Credit/Debit cards": 0.0, "Text": 25.0, "Givelify": 65.0, "Tithely": 0.0, "CashApp": 160.0, "Zelle": 325.0, "Website giving": 0.0 },
                         "End of Week": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 283.0, "Givelify": 150.0, "Tithely": 0.0, "CashApp": 0.0, "Zelle": 1198.41, "Website giving": 0.0 }
                     },
                     expenses: [
@@ -633,7 +645,7 @@
                     bankBalance: 5226.18,
                     income: {
                         "Sunday": { "Cash/Checks": 462.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 25.0, "Tithely": 1300.0, "CashApp": 960.0, "Zelle": 340.0, "Website giving": 0.0 },
-                        "Tuesday": { "Cash/Checks": 170.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 135.0, "Tithely": 0.0, "CashApp": 65.0, "Zelle": 300.0, "Website giving text": 0.0 },
+                        "Tuesday": { "Cash/Checks": 170.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 135.0, "Tithely": 0.0, "CashApp": 65.0, "Zelle": 300.0, "Website giving": 0.0 },
                         "End of Week": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 0.0, "Tithely": 0.0, "CashApp": 150.0, "Zelle": 300.0, "Website giving": 0.0 }
                     },
                     expenses: [
@@ -700,9 +712,9 @@
                     bankBalance: 10890.99,
                     income: {
                         "Sunday": { "Cash/Checks": 1375.0, "Credit/Debit cards": 0.0, "Text": 260.0, "Givelify": 1103.39, "Tithely": 1250.0, "CashApp": 939.0, "Zelle": 600.0, "Website giving": 0.0 },
-                        "Tuesday": { "Cash/Checks": 135.0, "Credit/Debit cards": 0.0, "Text": 50.0, "Givelify": 170.0, "Tithely": 51.80, "CashApp": 175.0, "Zelle": 558.33, "Website giving": 0.0 },
+                        "Tuesday": { "Cash/Checks": 135.0, "Credit/Debit cards": 0.0, "Text": 50.0, "Givelify": 170.0, "Tithely": 51.80, "CashApp": 175.0, "Zelle": 558.33, "Website giving text": 0.0 },
                         "End of Week": { "Cash/Checks": 30.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 0.0, "Tithely": 0.0, "CashApp": 0.0, "Zelle": 0.0, "Website giving": 0.0 },
-                        "End of Month": { "Cash/Checks": 30.0, "Credit/Debit cards": 0.0, "Text": 190.0, "Givelify": 280.0, "Tithely": 0.0, "CashApp": 0.0, "Zelle": 200.0, "Website giving": 0.0 }
+                        "End of Month": { "Cash/Checks": 30.0, "Credit/Debit cards": 0.0, "Text": 190.0, "Givelify": 280.0, "Tithely": 0.0, "CashApp": 0.0, "Zelle": 200.0, "Website giving text": 0.0 }
                     },
                     expenses: [
                         { category: "Pastor Payroll", amount: 2359.89, day: "Sun" },
@@ -734,7 +746,7 @@
                     weekKey: "4-3-2026",
                     bankBalance: 7783.48,
                     income: {
-                        "Sunday": { "Cash/Checks": 567.10, "Credit/Debit cards": 0.0, "Text": 100.0, "Givelify": 0.0, "Tithely": 1400.0, "CashApp": 1032.0, "Zelle": 410.0, "Website giving": 0.0 },
+                        "Sunday": { "Cash/Checks": 567.10, "Credit/Debit cards": 0.0, "Text": 100.0, "Givelify": 0.0, "Tithely": 1400.0, "CashApp": 1032.0, "Zelle": 410.0, "Website giving text": 0.0 },
                         "Tuesday": { "Cash/Checks": 54.0, "Credit/Debit cards": 0.0, "Text": 284.0, "Givelify": 45.0, "Tithely": 26.06, "CashApp": 63.0, "Zelle": 835.0, "Website giving text": 0.0 },
                         "End of Week": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 704.33, "Tithely": 0.0, "CashApp": 150.0, "Zelle": 200.0, "Website giving": 0.0 }
                     },
@@ -749,7 +761,7 @@
                     income: {
                         "Sunday": { "Cash/Checks": 1188.0, "Credit/Debit cards": 502.0, "Text": 230.0, "Givelify": 1103.39, "Tithely": 0.0, "CashApp": 1444.0, "Zelle": 982.50, "Website giving": 0.0 },
                         "Tuesday": { "Cash/Checks": 22.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 200.0, "Tithely": 51.80, "CashApp": 5.0, "Zelle": 170.83, "Website giving text": 0.0 },
-                        "End of Week": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 40.0, "Givelify": 241.0, "Tithely": 100.0, "CashApp": 110.0, "Zelle": 0.0, "Website giving": 0.0 },
+                        "End of Week": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 40.0, "Givelify": 241.0, "Tithely": 100.0, "CashApp": 110.0, "Zelle": 0.0, "Website giving text": 0.0 },
                         "End of Month": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 360.81, "Tithely": 0.0, "CashApp": 0.0, "Zelle": 0.0, "Website giving": 0.0 }
                     },
                     expenses: [
@@ -764,7 +776,7 @@
                     weekKey: "4-17-2026",
                     bankBalance: 7085.53,
                     income: {
-                        "Sunday": { "Cash/Checks": 802.30, "Credit/Debit cards": 0.0, "Text": 335.0, "Givelify": 0.0, "Tithely": 1350.0, "CashApp": 870.21, "Zelle": 235.0, "Website giving": 0.0 },
+                        "Sunday": { "Cash/Checks": 802.30, "Credit/Debit cards": 0.0, "Text": 335.0, "Givelify": 0.0, "Tithely": 1350.0, "CashApp": 870.21, "Zelle": 235.0, "Website giving text": 0.0 },
                         "Tuesday": { "Cash/Checks": 205.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 65.0, "Tithely": 0.0, "CashApp": 179.0, "Zelle": 315.0, "Website giving text": 0.0 },
                         "End of Week": { "Cash/Checks": 50.0, "Credit/Debit cards": 0.0, "Text": 283.0, "Givelify": 6.50, "Tithely": 0.0, "CashApp": 0.0, "Zelle": 0.0, "Website giving": 0.0 }
                     },
@@ -800,9 +812,9 @@
                     weekKey: "5-1-2026",
                     bankBalance: 5402.76,
                     income: {
-                        "Sunday": { "Cash/Checks": 522.0, "Credit/Debit cards": 0.0, "Text": 250.0, "Givelify": 0.0, "Tithely": 0.0, "CashApp": 1484.0, "Zelle": 615.0, "Website giving": 0.0 },
+                        "Sunday": { "Cash/Checks": 522.0, "Credit/Debit cards": 0.0, "Text": 250.0, "Givelify": 0.0, "Tithely": 0.0, "CashApp": 1484.0, "Zelle": 615.0, "Website giving text": 0.0 },
                         "Tuesday": { "Cash/Checks": 45.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 135.0, "Tithely": 31.20, "CashApp": 83.0, "Zelle": 190.0, "Website giving text": 0.0 },
-                        "End of Week": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 40.0, "Tithely": 110.0, "CashApp": 0.0, "Zelle": 0.0, "Website giving": 0.0 },
+                        "End of Week": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 40.0, "Tithely": 110.0, "CashApp": 0.0, "Zelle": 0.0, "Website giving text": 0.0 },
                         "End of Month": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 284.0, "Givelify": 0.0, "Tithely": 0.0, "CashApp": 695.0, "Zelle": 0.0, "Website giving": 0.0 }
                     },
                     expenses: [
@@ -817,7 +829,7 @@
                     income: {
                         "Sunday": { "Cash/Checks": 1170.0, "Credit/Debit cards": 462.0, "Text": 460.0, "Givelify": 0.0, "Tithely": 2000.0, "CashApp": 812.0, "Zelle": 1741.0, "Website giving": 0.0 },
                         "Tuesday": { "Cash/Checks": 30.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 537.0, "Tithely": 51.80, "CashApp": 65.0, "Zelle": 145.50, "Website giving text": 0.0 },
-                        "End of Week": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 150.0, "Tithely": 0.0, "CashApp": 170.0, "Zelle": 0.0, "Website giving": 0.0 },
+                        "End of Week": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 150.0, "Tithely": 0.0, "CashApp": 170.0, "Zelle": 0.0, "Website giving text": 0.0 },
                         "End of Month": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 357.81, "Tithely": 0.0, "CashApp": 0.0, "Zelle": 0.0, "Website giving": 0.0 }
                     },
                     expenses: [
@@ -831,7 +843,7 @@
                     weekKey: "5-15-2026",
                     bankBalance: 5056.41,
                     income: {
-                        "Sunday": { "Cash/Checks": 570.30, "Credit/Debit cards": 0.0, "Text": 195.0, "Givelify": 0.0, "Tithely": 0.0, "CashApp": 717.96, "Zelle": 195.0, "Website giving": 0.0 },
+                        "Sunday": { "Cash/Checks": 570.30, "Credit/Debit cards": 0.0, "Text": 195.0, "Givelify": 0.0, "Tithely": 0.0, "CashApp": 717.96, "Zelle": 195.0, "Website giving text": 0.0 },
                         "Tuesday": { "Cash/Checks": 65.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 25.0, "Tithely": 20.91, "CashApp": 0.0, "Zelle": 15.0, "Website giving text": 0.0 },
                         "End of Week": { "Cash/Checks": 400.0, "Credit/Debit cards": 0.0, "Text": 311.27, "Givelify": 321.0, "Tithely": 0.0, "CashApp": 100.0, "Zelle": 150.0, "Website giving": 0.0 }
                     },
@@ -845,23 +857,22 @@
 
             try {
                 for (const item of historicalDataset) {
-                    // Seed Income Summaries
-                    const incomeDocRef = db.collection('artifacts').doc(appId).collection('public').doc('data')
-                                          .collection('income_summaries').doc(item.weekKey);
+                    // Seed Income Summaries under compliant path structure
+                    const incomeDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'income_summaries', item.weekKey);
                     
-                    await incomeDocRef.set({
+                    await setDoc(incomeDocRef, {
                         income: item.income,
                         bankBalance: item.bankBalance,
                         lastUpdated: new Date().toISOString()
                     });
 
-                    // Seed Expenses List - FLATTENED path format adhering to security rules
-                    const expensesColRef = db.collection('artifacts').doc(appId).collection('public').doc('data')
-                                            .collection(`expenses_${item.weekKey}`);
+                    // Seed Expenses under compliant flat path structure (RULE 1)
+                    const expensesColRef = collection(db, 'artifacts', appId, 'public', 'data', `expenses_${item.weekKey}`);
                     
                     for (const exp of item.expenses) {
                         const expId = Math.random().toString(36).substring(2, 15);
-                        await expensesColRef.doc(expId).set({
+                        const expDocRef = doc(expensesColRef, expId);
+                        await setDoc(expDocRef, {
                             id: expId,
                             category: exp.category,
                             amount: exp.amount,
@@ -876,7 +887,7 @@
                 loadWeekData(activeWeekKey);
             } catch (err) {
                 console.error("Migration Failed:", err);
-                alert("Migration Failed! Please verify database connectivity rules.");
+                alert("Migration Failed! Please verify database connectivity rules.\nError: " + err.message);
             } finally {
                 seedBtn.disabled = false;
                 seedBtn.innerText = "Seed Database Data";

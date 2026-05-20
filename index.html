@@ -128,21 +128,13 @@
                 <div class="bg-slate-900 p-8 md:p-10 rounded-[2.5rem] text-white shadow-2xl">
                     <h2 class="text-xs font-black uppercase tracking-widest mb-6 text-slate-400">Log Payable Entry</h2>
                     <div class="grid grid-cols-1 md:grid-cols-12 gap-4">
-                        <div class="md:col-span-5">
+                        <div class="md:col-span-7">
                             <select id="expenseCategory" onchange="handleCategoryChange()" class="w-full bg-white/5 border border-white/10 p-4 rounded-xl text-xs font-bold text-white outline-none focus:ring-2 ring-indigo-500/50 cursor-pointer">
                                 <!-- Populated dynamically -->
                             </select>
                         </div>
-                        <div class="md:col-span-4">
+                        <div class="md:col-span-5">
                             <input type="number" id="expenseAmount" placeholder="0.00" class="w-full bg-white/5 border border-white/10 p-4 rounded-xl text-xs font-bold outline-none focus:ring-2 ring-indigo-500/50 text-white">
-                        </div>
-                        <div class="md:col-span-3">
-                            <select id="expenseDay" class="w-full bg-white/5 border border-white/10 p-4 rounded-xl text-xs font-bold text-white outline-none focus:ring-2 ring-indigo-500/50 cursor-pointer">
-                                <option value="Sun" class="text-slate-800">Sun</option>
-                                <option value="Tue" class="text-slate-800">Tue</option>
-                                <option value="End of Week" class="text-slate-800">End of Week</option>
-                                <option value="End of Month" class="text-slate-800">End of Month</option>
-                            </select>
                         </div>
                     </div>
 
@@ -398,7 +390,7 @@
             const cat = document.getElementById('expenseCategory').value;
             const amtInput = document.getElementById('expenseAmount');
             const amt = parseFloat(amtInput.value) || 0;
-            const day = document.getElementById('expenseDay').value;
+            const day = 'Sun'; // Default day assigned since the day selector is removed
             const details = document.getElementById('expenseDetail').value.trim();
 
             if (!cat || amt <= 0) return;
@@ -638,7 +630,7 @@
                     income: {
                         "Sunday": { "Cash/Checks": 797.0, "Credit/Debit cards": 462.0, "Text": 0.0, "Givelify": 746.93, "Tithely": 0.0, "CashApp": 807.0, "Zelle": 582.0, "Website giving": 0.0 },
                         "Tuesday": { "Cash/Checks": 85.0, "Credit/Debit cards": 0.0, "Text": 100.0, "Givelify": 357.81, "Tithely": 0.0, "CashApp": 322.0, "Zelle": 471.0, "Website giving text": 0.0 },
-                        "End of Week": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 0.0, "Tithely": 50.0, "CashApp": 51.0, "Zelle": 1078.33, "Website giving": 0.0 }
+                        "End of Week": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 0.0, "Tithely": 50.0, "CashApp": 51.0, "Zelle": 1078.33, "Website giving animate": 0.0 }
                     },
                     expenses: [
                         { category: "Mortgage - Kirkland Group", amount: 2018.41, day: "Sun" },
@@ -657,9 +649,9 @@
                     weekKey: "2-13-2026",
                     bankBalance: 9641.90,
                     income: {
-                        "Sunday": { "Cash/Checks": 1634.55, "Credit/Debit cards": 0.0, "Text": 420.0, "Givelify": 120.0, "Tithely": 51.80, "CashApp": 1340.0, "Zelle": 805.0, "Website giving": 0.0 },
-                        "Tuesday": { "Cash/Checks": 108.0, "Credit/Debit cards": 0.0, "Text": 25.0, "Givelify": 65.0, "Tithely": 0.0, "CashApp": 160.0, "Zelle": 325.0, "Website giving text": 0.0 },
-                        "End of Week": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 283.0, "Givelify": 150.0, "Tithely": 0.0, "CashApp": 0.0, "Zelle": 1198.41, "Website giving": 0.0 }
+                        "Sunday": { "Cash/Checks": 1634.55, "Credit/Debit cards": 0.0, "Text": 420.0, "Givelify": 120.0, "Tithely": 51.80, "CashApp": 1340.0, "Zelle": 805.0, "Website giving animate": 0.0 },
+                        "Tuesday": { "Cash/Checks": 108.0, "Credit/Debit cards": 0.0, "Text": 25.0, "Givelify": 65.0, "Tithely": 0.0, "CashApp": 160.0, "Zelle": 325.0, "Website giving text animate": 0.0 },
+                        "End of Week": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 283.0, "Givelify": 150.0, "Tithely": 0.0, "CashApp": 0.0, "Zelle": 1198.41, "Website giving animate": 0.0 }
                     },
                     expenses: [
                         { category: "Pastor Payroll", amount: 2359.89, day: "Sun" },
@@ -674,12 +666,12 @@
                     weekKey: "2-20-2026",
                     bankBalance: 5226.18,
                     income: {
-                        "Sunday": { "Cash/Checks": 462.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 25.0, "Tithely": 1300.0, "CashApp": 960.0, "Zelle": 340.0, "Website giving text": 0.0 },
-                        "Tuesday": { "Cash/Checks": 170.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 135.0, "Tithely": 0.0, "CashApp": 65.0, "Zelle": 300.0, "Website income text": 0.0 },
-                        "End of Week": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 0.0, "Tithely": 0.0, "CashApp": 150.0, "Zelle": 300.0, "Website giving": 0.0 }
+                        "Sunday": { "Cash/Checks": 462.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 25.0, "Tithely": 1300.0, "CashApp": 960.0, "Zelle": 340.0, "Website giving text animate": 0.0 },
+                        "Tuesday": { "Cash/Checks": 170.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 135.0, "Tithely": 0.0, "CashApp": 65.0, "Zelle": 300.0, "Website income text animate": 0.0 },
+                        "End of Week": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 0.0, "Tithely": 0.0, "CashApp": 150.0, "Zelle": 300.0, "Website giving animate": 0.0 }
                     },
                     expenses: [
-                        { category: "Band Payroll", amount: 1300.0, day: "Sun", details: "December PR2 & Feb C Davis" },
+                        { category: "Band Payroll", amount: 1300.0, day: "Sun", details: "December PR2 & Feb2026 PR1 for C Davis" },
                         { category: "Pastor Love offerings", amount: 25.0, day: "Sun", details: "Anniversary" },
                         { category: "Guest Speakers", amount: 175.0, day: "Sun", details: "Will Rhodes" },
                         { category: "Other", amount: 400.0, day: "Sun", details: "Val Murkison Birthday love offering" },
@@ -691,8 +683,8 @@
                     weekKey: "2-27-2026",
                     bankBalance: 7374.68,
                     income: {
-                        "Sunday": { "Cash/Checks": 665.0, "Credit/Debit cards": 0.0, "Text": 365.0, "Givelify": 0.0, "Tithely": 0.0, "CashApp": 1023.0, "Zelle": 1575.0, "Website giving": 0.0 },
-                        "Tuesday": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 45.0, "Tithely": 0.0, "CashApp": 0.0, "Zelle": 0.0, "Website income text": 0.0 }
+                        "Sunday": { "Cash/Checks": 665.0, "Credit/Debit cards": 0.0, "Text": 365.0, "Givelify": 0.0, "Tithely": 0.0, "CashApp": 1023.0, "Zelle": 1575.0, "Website giving animate": 0.0 },
+                        "Tuesday": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 45.0, "Tithely": 0.0, "CashApp": 0.0, "Zelle": 0.0, "Website income text animate": 0.0 }
                     },
                     expenses: [
                         { category: "Georgia Power", amount: 924.56, day: "Sun" },
@@ -704,10 +696,10 @@
                     weekKey: "3-6-2026",
                     bankBalance: 14413.17,
                     income: {
-                        "Sunday": { "Cash/Checks": 1146.0, "Credit/Debit cards": 462.0, "Text": 553.0, "Givelify": 1103.39, "Tithely": 1400.0, "CashApp": 1528.0, "Zelle": 1510.0, "Website giving": 0.0 },
-                        "Tuesday": { "Cash/Checks": 70.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 250.0, "Tithely": 110.0, "CashApp": 357.0, "Zelle": 608.33, "Website giving text": 0.0 },
-                        "End of Week": { "Cash/Checks": 650.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 488.50, "Tithely": 0.0, "CashApp": 51.0, "Zelle": 300.0, "Website giving": 0.0 },
-                        "End of Month": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 477.81, "Tithely": 0.0, "CashApp": 215.0, "Zelle": 0.0, "Website giving text": 0.0 }
+                        "Sunday": { "Cash/Checks": 1146.0, "Credit/Debit cards": 462.0, "Text": 553.0, "Givelify": 1103.39, "Tithely": 1400.0, "CashApp": 1528.0, "Zelle": 1510.0, "Website giving animate": 0.0 },
+                        "Tuesday": { "Cash/Checks": 70.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 250.0, "Tithely": 110.0, "CashApp": 357.0, "Zelle": 608.33, "Website giving text animate": 0.0 },
+                        "End of Week": { "Cash/Checks": 650.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 488.50, "Tithely": 0.0, "CashApp": 51.0, "Zelle": 300.0, "Website giving animate": 0.0 },
+                        "End of Month": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 477.81, "Tithely": 0.0, "CashApp": 215.0, "Zelle": 0.0, "Website giving text animate": 0.0 }
                     },
                     expenses: [
                         { category: "Mortgage - Kirkland Group", amount: 2018.41, day: "Sun" },
@@ -723,10 +715,10 @@
                     weekKey: "3-13-2026",
                     bankBalance: 9574.47,
                     income: {
-                        "Sunday": { "Cash/Checks": 289.20, "Credit/Debit cards": 0.0, "Text": 140.0, "Givelify": 0.0, "Tithely": 0.0, "CashApp": 375.0, "Zelle": 585.0, "Website giving text": 0.0 },
-                        "Tuesday": { "Cash/Checks": 140.0, "Credit/Debit cards": 0.0, "Text": 25.0, "Givelify": 255.0, "Tithely": 0.0, "CashApp": 71.0, "Zelle": 0.0, "Website giving text": 0.0 },
-                        "End of Week": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 283.0, "Givelify": 246.0, "Tithely": 0.0, "CashApp": 215.0, "Zelle": 1240.0, "Website giving": 0.0 },
-                        "End of Month": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 397.81, "Tithely": 0.0, "CashApp": 0.0, "Zelle": 0.0, "Website giving text": 0.0 }
+                        "Sunday": { "Cash/Checks": 289.20, "Credit/Debit cards": 0.0, "Text": 140.0, "Givelify": 0.0, "Tithely": 0.0, "CashApp": 375.0, "Zelle": 585.0, "Website giving text animate": 0.0 },
+                        "Tuesday": { "Cash/Checks": 140.0, "Credit/Debit cards": 0.0, "Text": 25.0, "Givelify": 255.0, "Tithely": 0.0, "CashApp": 71.0, "Zelle": 0.0, "Website giving text animate": 0.0 },
+                        "End of Week": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 283.0, "Givelify": 246.0, "Tithely": 0.0, "CashApp": 215.0, "Zelle": 1240.0, "Website giving animate": 0.0 },
+                        "End of Month": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 397.81, "Tithely": 0.0, "CashApp": 0.0, "Zelle": 0.0, "Website giving text animate": 0.0 }
                     },
                     expenses: [
                         { category: "Georgia Natural Gas", amount: 265.87, day: "Sun" },
@@ -741,10 +733,10 @@
                     weekKey: "3-20-2026",
                     bankBalance: 10890.99,
                     income: {
-                        "Sunday": { "Cash/Checks": 1375.0, "Credit/Debit cards": 0.0, "Text": 260.0, "Givelify": 1103.39, "Tithely": 1250.0, "CashApp": 939.0, "Zelle": 600.0, "Website giving": 0.0 },
-                        "Tuesday": { "Cash/Checks": 135.0, "Credit/Debit cards": 0.0, "Text": 50.0, "Givelify": 170.0, "Tithely": 51.80, "CashApp": 175.0, "Zelle": 558.33, "Website giving text": 0.0 },
-                        "End of Week": { "Cash/Checks": 30.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 0.0, "Tithely": 0.0, "CashApp": 0.0, "Zelle": 0.0, "Website income text": 0.0 },
-                        "End of Month": { "Cash/Checks": 30.0, "Credit/Debit cards": 0.0, "Text": 190.0, "Givelify": 280.0, "Tithely": 0.0, "CashApp": 0.0, "Zelle": 200.0, "Website giving text": 0.0 }
+                        "Sunday": { "Cash/Checks": 1375.0, "Credit/Debit cards": 0.0, "Text": 260.0, "Givelify": 1103.39, "Tithely": 1250.0, "CashApp": 939.0, "Zelle": 600.0, "Website giving animate": 0.0 },
+                        "Tuesday": { "Cash/Checks": 135.0, "Credit/Debit cards": 0.0, "Text": 50.0, "Givelify": 170.0, "Tithely": 51.80, "CashApp": 175.0, "Zelle": 558.33, "Website giving text animate": 0.0 },
+                        "End of Week": { "Cash/Checks": 30.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 0.0, "Tithely": 0.0, "CashApp": 0.0, "Zelle": 0.0, "Website income text animate": 0.0 },
+                        "End of Month": { "Cash/Checks": 30.0, "Credit/Debit cards": 0.0, "Text": 190.0, "Givelify": 280.0, "Tithely": 0.0, "CashApp": 0.0, "Zelle": 200.0, "Website giving text animate": 0.0 }
                     },
                     expenses: [
                         { category: "Pastor Payroll", amount: 2359.89, day: "Sun" },
@@ -757,8 +749,8 @@
                     weekKey: "3-27-2026",
                     bankBalance: 7013.92,
                     income: {
-                        "Sunday": { "Cash/Checks": 573.0, "Credit/Debit cards": 0.0, "Text": 190.0, "Givelify": 0.0, "Tithely": 0.0, "CashApp": 1280.0, "Zelle": 425.0, "Website giving text": 0.0 },
-                        "Tuesday": { "Cash/Checks": 70.0, "Credit/Debit cards": 0.0, "Text": 25.0, "Givelify": 30.0, "Tithely": 0.0, "CashApp": 51.0, "Zelle": 20.0, "Website giving text": 0.0 }
+                        "Sunday": { "Cash/Checks": 573.0, "Credit/Debit cards": 0.0, "Text": 190.0, "Givelify": 0.0, "Tithely": 0.0, "CashApp": 1280.0, "Zelle": 425.0, "Website giving text animate": 0.0 },
+                        "Tuesday": { "Cash/Checks": 70.0, "Credit/Debit cards": 0.0, "Text": 25.0, "Givelify": 30.0, "Tithely": 0.0, "CashApp": 51.0, "Zelle": 20.0, "Website giving text animate": 0.0 }
                     },
                     expenses: [
                         { category: "Georgia Power", amount: 667.43, day: "Sun" },
@@ -776,9 +768,9 @@
                     weekKey: "4-3-2026",
                     bankBalance: 7783.48,
                     income: {
-                        "Sunday": { "Cash/Checks": 567.10, "Credit/Debit cards": 0.0, "Text": 100.0, "Givelify": 0.0, "Tithely": 1400.0, "CashApp": 1032.0, "Zelle": 410.0, "Website giving text": 0.0 },
-                        "Tuesday": { "Cash/Checks": 54.0, "Credit/Debit cards": 0.0, "Text": 284.0, "Givelify": 45.0, "Tithely": 26.06, "CashApp": 63.0, "Zelle": 835.0, "Website income text": 0.0 },
-                        "End of Week": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 704.33, "Tithely": 0.0, "CashApp": 150.0, "Zelle": 200.0, "Website giving text": 0.0 }
+                        "Sunday": { "Cash/Checks": 567.10, "Credit/Debit cards": 0.0, "Text": 100.0, "Givelify": 0.0, "Tithely": 1400.0, "CashApp": 1032.0, "Zelle": 410.0, "Website giving text animate": 0.0 },
+                        "Tuesday": { "Cash/Checks": 54.0, "Credit/Debit cards": 0.0, "Text": 284.0, "Givelify": 45.0, "Tithely": 26.06, "CashApp": 63.0, "Zelle": 835.0, "Website income text animate": 0.0 },
+                        "End of Week": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 704.33, "Tithely": 0.0, "CashApp": 150.0, "Zelle": 200.0, "Website giving text animate": 0.0 }
                     },
                     expenses: [
                         { category: "Spectrum (TV, Phone, Internet)", amount: 339.43, day: "Sun" },
@@ -789,10 +781,10 @@
                     weekKey: "4-10-2026",
                     bankBalance: 11105.61,
                     income: {
-                        "Sunday": { "Cash/Checks": 1188.0, "Credit/Debit cards": 502.0, "Text": 230.0, "Givelify": 1103.39, "Tithely": 0.0, "CashApp": 1444.0, "Zelle": 982.50, "Website giving text": 0.0 },
-                        "Tuesday": { "Cash/Checks": 22.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 200.0, "Tithely": 51.80, "CashApp": 5.0, "Zelle": 170.83, "Website giving text": 0.0 },
-                        "End of Week": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 40.0, "Givelify": 241.0, "Tithely": 100.0, "CashApp": 110.0, "Zelle": 0.0, "Website giving text": 0.0 },
-                        "End of Month": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 360.81, "Tithely": 0.0, "CashApp": 0.0, "Zelle": 0.0, "Website giving text": 0.0 }
+                        "Sunday": { "Cash/Checks": 1188.0, "Credit/Debit cards": 502.0, "Text": 230.0, "Givelify": 1103.39, "Tithely": 0.0, "CashApp": 1444.0, "Zelle": 982.50, "Website giving text animate": 0.0 },
+                        "Tuesday": { "Cash/Checks": 22.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 200.0, "Tithely": 51.80, "CashApp": 5.0, "Zelle": 170.83, "Website giving text animate": 0.0 },
+                        "End of Week": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 40.0, "Givelify": 241.0, "Tithely": 100.0, "CashApp": 110.0, "Zelle": 0.0, "Website giving text animate": 0.0 },
+                        "End of Month": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 360.81, "Tithely": 0.0, "CashApp": 0.0, "Zelle": 0.0, "Website giving text animate": 0.0 }
                     },
                     expenses: [
                         { category: "Mortgage - Kirkland Group", amount: 2018.41, day: "Sun" },
@@ -806,9 +798,9 @@
                     weekKey: "4-17-2026",
                     bankBalance: 7085.53,
                     income: {
-                        "Sunday": { "Cash/Checks": 802.30, "Credit/Debit cards": 0.0, "Text": 335.0, "Givelify": 0.0, "Tithely": 1350.0, "CashApp": 870.21, "Zelle": 235.0, "Website giving text": 0.0 },
-                        "Tuesday": { "Cash/Checks": 205.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 65.0, "Tithely": 0.0, "CashApp": 179.0, "Zelle": 315.0, "Website giving text": 0.0 },
-                        "End of Week": { "Cash/Checks": 50.0, "Credit/Debit cards": 0.0, "Text": 283.0, "Givelify": 6.50, "Tithely": 0.0, "CashApp": 0.0, "Zelle": 0.0, "Website giving text": 0.0 }
+                        "Sunday": { "Cash/Checks": 802.30, "Credit/Debit cards": 0.0, "Text": 335.0, "Givelify": 0.0, "Tithely": 1350.0, "CashApp": 870.21, "Zelle": 235.0, "Website giving text animate": 0.0 },
+                        "Tuesday": { "Cash/Checks": 205.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 65.0, "Tithely": 0.0, "CashApp": 179.0, "Zelle": 315.0, "Website giving text animate": 0.0 },
+                        "End of Week": { "Cash/Checks": 50.0, "Credit/Debit cards": 0.0, "Text": 283.0, "Givelify": 6.50, "Tithely": 0.0, "CashApp": 0.0, "Zelle": 0.0, "Website giving text animate": 0.0 }
                     },
                     expenses: [
                         { category: "Lady Val Payroll", amount: 1231.60, day: "Sun" },
@@ -824,9 +816,9 @@
                     weekKey: "4-24-2026",
                     bankBalance: 7793.30,
                     income: {
-                        "Sunday": { "Cash/Checks": 527.0, "Credit/Debit cards": 0.0, "Text": 300.0, "Givelify": 0.0, "Tithely": 0.0, "CashApp": 850.0, "Zelle": 1290.0, "Website giving text": 0.0 },
-                        "Tuesday": { "Cash/Checks": 72.0, "Credit/Debit cards": 0.0, "Text": 140.0, "Givelify": 203.0, "Tithely": 0.0, "CashApp": 0.0, "Zelle": 477.50, "Website giving text": 0.0 },
-                        "End of Week": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 500.0, "Givelify": 557.81, "Tithely": 0.0, "CashApp": 10.0, "Zelle": 0.0, "Website giving text": 0.0 }
+                        "Sunday": { "Cash/Checks": 527.0, "Credit/Debit cards": 0.0, "Text": 300.0, "Givelify": 0.0, "Tithely": 0.0, "CashApp": 850.0, "Zelle": 1290.0, "Website giving text animate": 0.0 },
+                        "Tuesday": { "Cash/Checks": 72.0, "Credit/Debit cards": 0.0, "Text": 140.0, "Givelify": 203.0, "Tithely": 0.0, "CashApp": 0.0, "Zelle": 477.50, "Website giving text animate": 0.0 },
+                        "End of Week": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 500.0, "Givelify": 557.81, "Tithely": 0.0, "CashApp": 10.0, "Zelle": 0.0, "Website giving text animate": 0.0 }
                     },
                     expenses: [
                         { category: "Pastor Payroll", amount: 2359.89, day: "Sun" },
@@ -842,10 +834,10 @@
                     weekKey: "5-1-2026",
                     bankBalance: 5402.76,
                     income: {
-                        "Sunday": { "Cash/Checks": 522.0, "Credit/Debit cards": 0.0, "Text": 250.0, "Givelify": 0.0, "Tithely": 0.0, "CashApp": 1484.0, "Zelle": 615.0, "Website giving text": 0.0 },
-                        "Tuesday": { "Cash/Checks": 45.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 135.0, "Tithely": 31.20, "CashApp": 83.0, "Zelle": 190.0, "Website giving text": 0.0 },
-                        "End of Week": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 40.0, "Tithely": 110.0, "CashApp": 0.0, "Zelle": 0.0, "Website giving text": 0.0 },
-                        "End of Month": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 284.0, "Givelify": 0.0, "Tithely": 0.0, "CashApp": 695.0, "Zelle": 0.0, "Website giving text": 0.0 }
+                        "Sunday": { "Cash/Checks": 522.0, "Credit/Debit cards": 0.0, "Text": 250.0, "Givelify": 0.0, "Tithely": 0.0, "CashApp": 1484.0, "Zelle": 615.0, "Website giving text animate": 0.0 },
+                        "Tuesday": { "Cash/Checks": 45.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 135.0, "Tithely": 31.20, "CashApp": 83.0, "Zelle": 190.0, "Website giving text animate": 0.0 },
+                        "End of Week": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 40.0, "Tithely": 110.0, "CashApp": 0.0, "Zelle": 0.0, "Website giving text animate": 0.0 },
+                        "End of Month": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 284.0, "Givelify": 0.0, "Tithely": 0.0, "CashApp": 695.0, "Zelle": 0.0, "Website giving text animate": 0.0 }
                     },
                     expenses: [
                         { category: "First Citizens Bank", amount: 184.32, day: "Sun", details: "April copier lease" },
@@ -857,14 +849,14 @@
                     weekKey: "5-8-2026",
                     bankBalance: 11171.52,
                     income: {
-                        "Sunday": { "Cash/Checks": 1170.0, "Credit/Debit cards": 462.0, "Text": 460.0, "Givelify": 0.0, "Tithely": 2000.0, "CashApp": 812.0, "Zelle": 1741.0, "Website giving text": 0.0 },
-                        "Tuesday": { "Cash/Checks": 30.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 537.0, "Tithely": 51.80, "CashApp": 65.0, "Zelle": 145.50, "Website giving text": 0.0 },
-                        "End of Week": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 150.0, "Tithely": 0.0, "CashApp": 170.0, "Zelle": 0.0, "Website giving text": 0.0 },
-                        "End of Month": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 357.81, "Tithely": 0.0, "CashApp": 0.0, "Zelle": 0.0, "Website giving text": 0.0 }
+                        "Sunday": { "Cash/Checks": 1170.0, "Credit/Debit cards": 462.0, "Text": 460.0, "Givelify": 0.0, "Tithely": 2000.0, "CashApp": 812.0, "Zelle": 1741.0, "Website giving text animate": 0.0 },
+                        "Tuesday": { "Cash/Checks": 30.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 537.0, "Tithely": 51.80, "CashApp": 65.0, "Zelle": 145.50, "Website giving text animate": 0.0 },
+                        "End of Week": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 150.0, "Tithely": 0.0, "CashApp": 170.0, "Zelle": 0.0, "Website giving text animate": 0.0 },
+                        "End of Month": { "Cash/Checks": 0.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 357.81, "Tithely": 0.0, "CashApp": 0.0, "Zelle": 0.0, "Website giving text animate": 0.0 }
                     },
                     expenses: [
                         { category: "Mortgage - Kirkland Group", amount: 2018.41, day: "Sun" },
-                        { category: "Band Payroll", amount: 2000.0, day: "Sun", details: "March PR1 - includes Corey Davis final pay" },
+                        { category: "Band Payroll", amount: 2000.0, day: "Sun", details: "March PR1 - includes Corey Davis' final pay (Apr2026PR2)" },
                         { category: "Guest Speakers", amount: 125.0, day: "Sun", details: "Chelsea Reynolds" },
                         { category: "Other", amount: 150.0, day: "Sun", details: "Kirk Marshall drummer" }
                     ]
@@ -873,9 +865,9 @@
                     weekKey: "5-15-2026",
                     bankBalance: 5056.41,
                     income: {
-                        "Sunday": { "Cash/Checks": 570.30, "Credit/Debit cards": 0.0, "Text": 195.0, "Givelify": 0.0, "Tithely": 0.0, "CashApp": 717.96, "Zelle": 195.0, "Website giving text": 0.0 },
-                        "Tuesday": { "Cash/Checks": 65.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 25.0, "Tithely": 20.91, "CashApp": 0.0, "Zelle": 15.0, "Website giving text": 0.0 },
-                        "End of Week": { "Cash/Checks": 400.0, "Credit/Debit cards": 0.0, "Text": 311.27, "Givelify": 321.0, "Tithely": 0.0, "CashApp": 100.0, "Zelle": 150.0, "Website giving text": 0.0 }
+                        "Sunday": { "Cash/Checks": 570.30, "Credit/Debit cards": 0.0, "Text": 195.0, "Givelify": 0.0, "Tithely": 0.0, "CashApp": 717.96, "Zelle": 195.0, "Website giving text animate": 0.0 },
+                        "Tuesday": { "Cash/Checks": 65.0, "Credit/Debit cards": 0.0, "Text": 0.0, "Givelify": 25.0, "Tithely": 20.91, "CashApp": 0.0, "Zelle": 15.0, "Website giving text animate": 0.0 },
+                        "End of Week": { "Cash/Checks": 400.0, "Credit/Debit cards": 0.0, "Text": 311.27, "Givelify": 321.0, "Tithely": 0.0, "CashApp": 100.0, "Zelle": 150.0, "Website giving text animate": 0.0 }
                     },
                     expenses: [
                         { category: "Guest Speakers", amount: 175.0, day: "Sun", details: "Will Rhodes" },
